@@ -11,20 +11,19 @@
 #include <algorithm>
 #include <protocol_common.h>
 #include <variable_headers.h>
-#include <vector>
 #define MAX_MESSAGE_SIZE 244
 #define HEADER_SIZE 2
 
 // MUST BE UPDATED IF MORE CONTROL PACKET TYPES ARE ADDED
 extern std::set<int> validControlPackageValues;
 
-std::vector<uint8_t> serializeMessage(Message &message);
-std::vector<uint8_t> serializeHeader(FixedHeader &header);
-std::vector<uint8_t> serializeVariableHeader(VariableHeader &variableHeader);
+void serializeMessage(Message &message, uint8_t *serializedMessageLocation, size_t reservedSpace);
+void serializeVariableHeader(VariableHeader &variableHeader, uint8_t *serializedVariableHeaderLocation, size_t reservedSpace);
+void serializeHeader(FixedHeader &header, uint8_t *serializedHeaderLocation, size_t reservedSpace);
 
-Message parseMessage(std::vector<uint8_t> &rawMessage);
-FixedHeader parseHeader(std::vector<uint8_t> &rawHeader);
-VariableHeader parseVariableHeader(ControlPacketType controlPacketType, std::vector<uint8_t> &rawVariableHeader);
+Message parseIncomingPacket(uint8_t *incomingPacket, size_t availableSpace);
+FixedHeader parseFixedHeader(uint8_t *serializedHeader);
+VariableHeader parseVariableHeader(ControlPacketType controlPacketType, uint8_t *serializedVariableHeader);
 
 // void generateRandomMessage(Message msg);
 

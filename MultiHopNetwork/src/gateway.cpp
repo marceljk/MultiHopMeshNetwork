@@ -42,7 +42,6 @@ uint8_t res;
 
 void loop()
 {
-    Serial.println(".");
     uint8_t len = sizeof(buf);
     uint8_t from;
     if (manager.recvfromAck(buf, &len, &from))
@@ -52,8 +51,7 @@ void loop()
         Serial.print(": ");
         try
         {
-            std::vector<uint8_t> vec(&buf[0], &buf[len]);
-            Message msg = parseMessage(vec);
+            Message msg = parseIncomingPacket(buf, RH_MESH_MAX_MESSAGE_LEN);
             Serial.print(msg.toString().c_str());
         }
         catch (std::invalid_argument)

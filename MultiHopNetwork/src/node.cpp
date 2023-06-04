@@ -57,10 +57,7 @@ void loop()
         Serial.println("---------------------------------");
 
         Serial.println(message.toString().c_str());
-        std::vector<uint8_t> vec = serializeMessage(message);
-
-        std::copy(vec.begin(), vec.end(), buf);
-        // delete (&message);
+        serializeMessage(message, buf, RH_MAX_MESSAGE_LEN);
 
         Serial.println("\n raw: ");
 
@@ -102,16 +99,16 @@ void loop()
     // {
     //     Serial.println("payload broken");
     // }
-}
 
-// uint8_t len = sizeof(buf);
-// uint8_t from;
-// if (manager.recvfromAck(buf, &len, &from))
-// {
-//     Serial.print("message from node n.");
-//     Serial.print(from);
-//     Serial.print(": ");
-//     Serial.print((char *)buf);
-//     Serial.print(" rssi: ");
-//     Serial.println(rf95.lastRssi());
-// }
+    uint8_t len = sizeof(buf);
+    uint8_t from;
+    if (manager.recvfromAck(buf, &len, &from))
+    {
+        Serial.print("message from node n.");
+        Serial.print(from);
+        Serial.print(": ");
+        Serial.print((char *)buf);
+        Serial.print(" rssi: ");
+        Serial.println(rf95.lastRssi());
+    }
+}

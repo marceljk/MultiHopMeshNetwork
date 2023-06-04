@@ -2,91 +2,56 @@
 
 std::set<int> validControlPackageValues{CONNECT, CONNACK, PUBLISH, PUBACK, SUBSCRIBE, SUBACK, DISCONNECT};
 
-// Function to parse a message
-Message parseMessage(std::vector<uint8_t> &rawMessage)
+Message parseIncomingPacket(uint8_t *incomingPacket, size_t availableSpace)
 {
-    if (rawMessage.size() < HEADER_SIZE)
+    if (availableSpace < HEADER_SIZE)
     {
-        throw std::invalid_argument("Invalid message size");
+        throw std::invalid_argument("Insufficient space for header");
     }
-
-    FixedHeader header = parseHeader(rawMessage);
-    rawMessage.erase(rawMessage.begin(), rawMessage.begin() + HEADER_SIZE);
-
-    if (header.packetLength > rawMessage.size())
+    FixedHeader packetHeader = parseFixedHeader(incomingPacket);
+    if (availableSpace < packetHeader.packetLength)
     {
-        throw std::invalid_argument("Invalid packet length in header");
+        throw std::invalid_argument("Packet length in header exceeds available space");
     }
-
-    VariableHeader variableHeader = parseVariableHeader(header.controlPacketType, rawMessage);
-    rawMessage.erase(rawMessage.begin(), rawMessage.begin() + variableHeader.size);
-
-    if (variableHeader.size > rawMessage.size())
+    VariableHeader packetVariableHeader = parseVariableHeader(packetHeader.controlPacketType, incomingPacket + HEADER_SIZE);
+    if (availableSpace < packetVariableHeader.size)
     {
-        throw std::invalid_argument("Invalid variable header size");
+        throw std::invalid_argument("Variable header size exceeds available space");
     }
-
-    std::string payload(reinterpret_cast<const char *>(rawMessage.data()), header.packetLength - HEADER_SIZE - variableHeader.size);
-    Message message = Message(header, variableHeader, payload);
-
-    rawMessage.erase(rawMessage.begin(), rawMessage.begin() + header.packetLength);
-
-    return message;
+    std::string packetPayload(incomingPacket + HEADER_SIZE + packetVariableHeader.size, incomingPacket + packetHeader.packetLength);
+    Message finalMessage = Message(packetHeader, packetVariableHeader, packetPayload);
+    return finalMessage;
 }
 
-// Control packet bit mask
-const uint8_t CONTROL_PACKET_MASK = 0xF0;
-// Control packet shift count
-const uint8_t CONTROL_PACKET_SHIFT = 4;
+// Bit mask for extracting the control packet type from the header byte
+const uint8_t CONTROL_PACKET_TYPE_MASK = 0xF0;
+// Shift count for getting the control packet type from the header byte
+const uint8_t CONTROL_PACKET_TYPE_SHIFT = 4;
 
-// Flags for checking the properties of the header
-const uint8_t DUP_FLAG = 0b00001000;
-const uint8_t QOS_FLAG = 0b00000110;
-const uint8_t RETAIN_FLAG = 0b00000001;
+// Bit masks for checking the properties of the header
+const uint8_t DUPLICATE_FLAG_MASK = 0b00001000;
+const uint8_t QOS_LEVEL_MASK = 0b00000110;
+const uint8_t RETAIN_FLAG_MASK = 0b00000001;
 
-FixedHeader parseHeader(std::vector<uint8_t> &rawHeader)
+FixedHeader parseFixedHeader(uint8_t *headerBytes)
 {
-    uint8_t controlPacketIndex = (rawHeader[0] & CONTROL_PACKET_MASK) >> CONTROL_PACKET_SHIFT;
-    ControlPacketType controlPacketType = static_cast<ControlPacketType>(controlPacketIndex);
+    uint8_t controlPacketTypeIndex = (headerBytes[0] & CONTROL_PACKET_TYPE_MASK) >> CONTROL_PACKET_TYPE_SHIFT;
+    ControlPacketType controlPacketType = static_cast<ControlPacketType>(controlPacketTypeIndex);
 
     if (validControlPackageValues.find(controlPacketType) == validControlPackageValues.end())
     {
         throw std::invalid_argument("Invalid control packet type");
     }
 
-    bool duplicate = (rawHeader[0] & DUP_FLAG);
-    int qosLevel = (rawHeader[0] & QOS_FLAG) >> 1;
-    bool retain = (rawHeader[0] & RETAIN_FLAG) > 0;
-    int packetLength = rawHeader[1];
+    bool isDuplicate = (headerBytes[0] & DUPLICATE_FLAG_MASK);
+    int qosLevel = (headerBytes[0] & QOS_LEVEL_MASK) >> 1;
+    bool isRetain = (headerBytes[0] & RETAIN_FLAG_MASK) > 0;
+    int packetLength = headerBytes[1];
 
-    return FixedHeader(controlPacketType, duplicate, retain, qosLevel, packetLength);
+    return FixedHeader(controlPacketType, isDuplicate, isRetain, qosLevel, packetLength);
 }
 
-std::vector<uint8_t> serializeHeader(FixedHeader &header)
-{
-    std::vector<uint8_t> rawHeader(HEADER_SIZE);
-
-    // Insert the control packet index into the first byte
-    uint8_t controlPacketIndex = static_cast<uint8_t>(header.controlPacketType);
-    rawHeader[0] = (controlPacketIndex << CONTROL_PACKET_SHIFT) & CONTROL_PACKET_MASK;
-
-    // Insert the DUP, QOS, and RETAIN flags into the first byte
-    if (header.isDuplicate)
-    {
-        rawHeader[0] |= DUP_FLAG;
-    }
-    rawHeader[0] |= (header.qosLevel << 1) & QOS_FLAG;
-    if (header.retain)
-    {
-        rawHeader[0] |= RETAIN_FLAG;
-    }
-
-    // Insert the packet length into the second byte
-    rawHeader[1] = header.packetLength;
-    return rawHeader;
-}
-
-VariableHeader parseVariableHeader(ControlPacketType controlPacketType, std::vector<uint8_t> &rawVariableHeader)
+VariableHeader parseVariableHeader(ControlPacketType controlPacketType, uint8_t *serializedVariableHeader)
 {
 
     VariableHeader variableHeader = VariableHeader(0, controlPacketType);
@@ -96,11 +61,11 @@ VariableHeader parseVariableHeader(ControlPacketType controlPacketType, std::vec
     {
     case CONNECT:
     {
-        uint8_t protocolVersion = rawVariableHeader[0];
+        uint8_t protocolVersion = serializedVariableHeader[0];
         uint8_t uuid[16];
         for (int i = 0; i < 16; i++)
         {
-            uuid[i] = rawVariableHeader[i + 1];
+            uuid[i] = serializedVariableHeader[i + 1];
         }
 
         size_t size = 17;
@@ -111,7 +76,7 @@ VariableHeader parseVariableHeader(ControlPacketType controlPacketType, std::vec
 
     case CONNACK:
     {
-        uint8_t returnCode = rawVariableHeader[0];
+        uint8_t returnCode = serializedVariableHeader[0];
         size_t size = 1;
 
         variableHeader = ConnackHeader(size, controlPacketType, returnCode);
@@ -120,10 +85,10 @@ VariableHeader parseVariableHeader(ControlPacketType controlPacketType, std::vec
 
     case PUBLISH:
     {
-        uint8_t topicNameLength = rawVariableHeader[0];
-        std::string topicName(reinterpret_cast<const char *>(rawVariableHeader.data()), rawVariableHeader.size());
+        uint8_t topicNameLength = serializedVariableHeader[0];
+        std::string topicName(serializedVariableHeader, serializedVariableHeader + topicNameLength);
 
-        uint16_t packetID = (rawVariableHeader[topicNameLength + 1] << 8) | rawVariableHeader[topicNameLength + 2];
+        uint16_t packetID = (serializedVariableHeader[topicNameLength + 1] << 8) | serializedVariableHeader[topicNameLength + 2];
 
         size_t size = 3 + topicNameLength;
         variableHeader = PublishHeader(size, controlPacketType, topicNameLength, topicName, packetID);
@@ -131,7 +96,7 @@ VariableHeader parseVariableHeader(ControlPacketType controlPacketType, std::vec
     }
     case PUBACK:
     {
-        uint16_t packetID = (rawVariableHeader[0] << 8) | rawVariableHeader[1];
+        uint16_t packetID = (serializedVariableHeader[0] << 8) | serializedVariableHeader[1];
         size_t size = 2;
 
         variableHeader = PubackHeader(size, controlPacketType, packetID);
@@ -140,10 +105,10 @@ VariableHeader parseVariableHeader(ControlPacketType controlPacketType, std::vec
 
     case SUBSCRIBE:
     {
-        uint8_t topicNameLength = rawVariableHeader[0];
-        std::string topicName(reinterpret_cast<const char *>(rawVariableHeader.data()), rawVariableHeader.size());
+        uint8_t topicNameLength = serializedVariableHeader[0];
+        std::string topicName(serializedVariableHeader, serializedVariableHeader + topicNameLength);
 
-        uint16_t packetID = (rawVariableHeader[topicNameLength + 1] << 8) | rawVariableHeader[topicNameLength + 2];
+        uint16_t packetID = (serializedVariableHeader[topicNameLength + 1] << 8) | serializedVariableHeader[topicNameLength + 2];
 
         size_t size = 3 + topicNameLength;
         variableHeader = PublishHeader(size, controlPacketType, topicNameLength, topicName, packetID);
@@ -154,7 +119,7 @@ VariableHeader parseVariableHeader(ControlPacketType controlPacketType, std::vec
 
     case SUBACK:
     {
-        uint16_t packetID = (rawVariableHeader[0] << 8) | rawVariableHeader[1];
+        uint16_t packetID = (serializedVariableHeader[0] << 8) | serializedVariableHeader[1];
         size_t size = 2;
 
         variableHeader = SubackHeader(size, controlPacketType, packetID);
@@ -170,46 +135,65 @@ VariableHeader parseVariableHeader(ControlPacketType controlPacketType, std::vec
     return variableHeader;
 }
 
+void serializeHeader(FixedHeader &header, uint8_t *serializedHeaderLocation, size_t reservedSpace)
+{
+    if (reservedSpace < HEADER_SIZE)
+    {
+        throw std::invalid_argument("Allocated Space too small.");
+    }
+    uint8_t controlPacketIndex = static_cast<uint8_t>(header.controlPacketType);
+    serializedHeaderLocation[0] = (controlPacketIndex << CONTROL_PACKET_TYPE_SHIFT) & CONTROL_PACKET_TYPE_MASK;
+
+    if (header.isDuplicate)
+    {
+        serializedHeaderLocation[0] |= DUPLICATE_FLAG_MASK;
+    }
+    serializedHeaderLocation[0] |= (header.qosLevel << 1) & QOS_LEVEL_MASK;
+    if (header.retain)
+    {
+        serializedHeaderLocation[0] |= RETAIN_FLAG_MASK;
+    }
+
+    serializedHeaderLocation[1] = header.packetLength;
+}
+
 constexpr size_t UUID_SIZE = 16;
 constexpr uint8_t SHIFT_BYTE = 8;
 
-std::vector<uint8_t> serializeVariableHeader(VariableHeader &variableHeader)
+void serializeVariableHeader(VariableHeader &variableHeader, uint8_t *serializedVariableHeaderLocation, size_t reservedSpace)
 {
-    std::vector<uint8_t> rawVariableHeader(2);
-
+    if (reservedSpace < variableHeader.size)
+    {
+        throw std::invalid_argument("Allocated Space too small.");
+    }
     switch (variableHeader.controlPacketType)
     {
     case CONNECT:
     {
         ConnectHeader &connectHeader = static_cast<ConnectHeader &>(variableHeader);
-        rawVariableHeader[0] = connectHeader.protocolVersion;
+        serializedVariableHeaderLocation[0] = connectHeader.protocolVersion;
         for (int i = 0; i < 16; i++)
         {
-            rawVariableHeader[i + 1] = connectHeader.uuid[i];
+            serializedVariableHeaderLocation[i + 1] = connectHeader.uuid[i];
         }
         break;
     }
     case CONNACK:
     {
         ConnackHeader &connackHeader = static_cast<ConnackHeader &>(variableHeader);
-        rawVariableHeader[0] = connackHeader.returnCode;
+        serializedVariableHeaderLocation[0] = connackHeader.returnCode;
         break;
     }
     case PUBLISH:
     {
         PublishHeader &publishHeader = static_cast<PublishHeader &>(variableHeader);
 
-        rawVariableHeader[0] = publishHeader.topicNameLength >> SHIFT_BYTE;
-        rawVariableHeader[1] = publishHeader.topicNameLength;
-        std::copy(publishHeader.topicName.begin(), publishHeader.topicName.end(), rawVariableHeader.begin() + 3);
+        serializedVariableHeaderLocation[0] = publishHeader.topicNameLength >> SHIFT_BYTE;
+        serializedVariableHeaderLocation[1] = publishHeader.topicNameLength;
+        std::copy(publishHeader.topicName.begin(), publishHeader.topicName.end(), serializedVariableHeaderLocation);
 
-        if (rawVariableHeader.size() < publishHeader.topicNameLength + 4)
-        {
-            throw std::out_of_range("Buffer size too small for operation");
-        }
-
-        rawVariableHeader[publishHeader.topicNameLength + 2] = publishHeader.packetID >> SHIFT_BYTE;
-        rawVariableHeader[publishHeader.topicNameLength + 3] = publishHeader.packetID;
+        serializedVariableHeaderLocation[publishHeader.topicNameLength + 2] = publishHeader.packetID >> SHIFT_BYTE;
+        serializedVariableHeaderLocation[publishHeader.topicNameLength + 3] = publishHeader.packetID;
         break;
     }
 
@@ -217,8 +201,8 @@ std::vector<uint8_t> serializeVariableHeader(VariableHeader &variableHeader)
     {
         PubackHeader &pubackHeader = static_cast<PubackHeader &>(variableHeader);
 
-        rawVariableHeader[0] = pubackHeader.packetID >> 8;
-        rawVariableHeader[1] = pubackHeader.packetID;
+        serializedVariableHeaderLocation[0] = pubackHeader.packetID >> 8;
+        serializedVariableHeaderLocation[1] = pubackHeader.packetID;
         break;
     }
 
@@ -226,12 +210,12 @@ std::vector<uint8_t> serializeVariableHeader(VariableHeader &variableHeader)
     {
         SubscribeHeader &subscribeHeader = static_cast<SubscribeHeader &>(variableHeader);
 
-        rawVariableHeader[0] = subscribeHeader.topicNameLength >> 8;
-        rawVariableHeader[1] = subscribeHeader.topicNameLength;
-        std::copy(subscribeHeader.topicName.begin(), subscribeHeader.topicName.end(), rawVariableHeader.begin() + 3);
+        serializedVariableHeaderLocation[0] = subscribeHeader.topicNameLength >> 8;
+        serializedVariableHeaderLocation[1] = subscribeHeader.topicNameLength;
+        std::copy(subscribeHeader.topicName.begin(), subscribeHeader.topicName.end(), serializedVariableHeaderLocation + 3);
 
-        rawVariableHeader[subscribeHeader.topicNameLength + 3] = subscribeHeader.packetID;
-        rawVariableHeader[subscribeHeader.topicNameLength + 2] = subscribeHeader.packetID >> 8;
+        serializedVariableHeaderLocation[subscribeHeader.topicNameLength + 3] = subscribeHeader.packetID;
+        serializedVariableHeaderLocation[subscribeHeader.topicNameLength + 2] = subscribeHeader.packetID >> 8;
         break;
     }
 
@@ -239,29 +223,26 @@ std::vector<uint8_t> serializeVariableHeader(VariableHeader &variableHeader)
     {
         SubackHeader &subackHeader = static_cast<SubackHeader &>(variableHeader);
 
-        rawVariableHeader[0] = subackHeader.packetID >> 8;
-        rawVariableHeader[1] = subackHeader.packetID;
+        serializedVariableHeaderLocation[0] = subackHeader.packetID >> 8;
+        serializedVariableHeaderLocation[1] = subackHeader.packetID;
         break;
     }
     }
-    return rawVariableHeader;
 }
 
-std::vector<uint8_t> serializeMessage(Message &message)
+void serializeMessage(Message &message, uint8_t *serializedMessageLocation, size_t reservedSpace)
 {
-    std::vector<uint8_t> serializedVariableHeader = serializeVariableHeader(message.variableHeader);
+    serializeVariableHeader(message.variableHeader, serializedMessageLocation + HEADER_SIZE, reservedSpace - HEADER_SIZE);
     size_t summedHeaderSize = message.variableHeader.size + HEADER_SIZE;
 
     if (message.payload.size() > MAX_MESSAGE_SIZE - summedHeaderSize)
     {
-        message.payload.resize(MAX_MESSAGE_SIZE - summedHeaderSize);
+        throw std::invalid_argument("Allocated Space too small.");
     }
 
     message.header.packetLength = summedHeaderSize + message.payload.size();
-    std::vector<uint8_t> serializedMessage = serializeHeader(message.header);
+    // Slightly weird order, but the message length must be determined before serializing the fixed header.
+    serializeHeader(message.header, serializedMessageLocation, reservedSpace);
 
-    serializedMessage.insert(serializedMessage.end(), serializedVariableHeader.begin(), serializedVariableHeader.end());
-    serializedMessage.insert(serializedMessage.end(), message.payload.begin(), message.payload.end());
-
-    return serializedMessage;
+    std::copy(message.payload.begin(), message.payload.end(), serializedMessageLocation + summedHeaderSize);
 }
