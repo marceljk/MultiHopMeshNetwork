@@ -65,7 +65,7 @@ The Variable Header contains Topic Name and Packet-ID.
 
 | Bytes | Content              | Description                                                       |
 |:-----:|----------------------|-------------------------------------------------------------------|
-| 2     | Length of Topic Name | The length of the following topic name in Bytes.                  |
+| 1     | Length of Topic Name | The length of the following topic name in Bytes.                  |
 | ?     | Topic Name           | The name of the topic on which to publish the packet (in UTF-8).  |
 | 2     | Packet ID           | The unique identifier of the packet.                               |
 
@@ -83,7 +83,7 @@ The Variable Header contains Topic Name and Packet-ID.
 
 | Bytes | Content              | Description                                                       |
 |:-----:|----------------------|-------------------------------------------------------------------|
-| 2     | Length of Topic Name | The length of the following topic name in Bytes.                  |
+| 1     | Length of Topic Name | The length of the following topic name in Bytes.                  |
 | ?     | Topic Name           | The name of the topic to subscribe to (in UTF-8).                 |
 | 2     | Packet ID            | The unique identifier of the packet.                              |
 
@@ -130,4 +130,8 @@ Payload:
 ## 3. Security
 
 None
+
+## 4. OTA-Updates
+
+
     

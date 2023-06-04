@@ -3,7 +3,8 @@
 #include <SPI.h>
 #include <config.h>
 #include <protocol.h>
-#include <testing.h>
+#include <protocol_common.h>
+#include <variable_headers.h>
 
 #define TXINTERVAL 3000
 unsigned long nextTxTime;
@@ -12,7 +13,7 @@ RH_RF95 rf95(LLG_CS, LLG_DI0);
 
 RHMesh manager(rf95, NODE_ADDRESS);
 
-Message message;
+Message message = dummyMessage();
 
 void setup()
 {
@@ -40,31 +41,13 @@ void setup()
     Serial.println("RF95 ready");
     nextTxTime = millis();
 
-    testingHeaderParsing();
+    // testingHeaderParsing();
+
+    message = dummyMessage();
 }
 
 uint8_t buf[RH_MESH_MAX_MESSAGE_LEN];
 uint8_t res;
-
-void dummyMessage()
-{
-    Header header;
-    header.controlPacketType = CONNECT;
-    header.isDuplicate = false;
-    header.qosLevel = 0;
-
-    VariableHeader variableHeader;
-    variableHeader.controlPacketType = CONNECT;
-    variableHeader.size = 17;
-    variableHeader.connect.protocolVersion = 1;
-    for (int i = 0; i < 16; i++)
-    {
-        variableHeader.connect.uuid[i] = (uint8_t)11;
-    }
-
-    message.header = header;
-    message.variableHeader = variableHeader;
-}
 
 void loop()
 {
@@ -72,36 +55,32 @@ void loop()
     if (millis() > nextTxTime)
     {
         Serial.println("---------------------------------");
-        uint8_t payload[MAX_MESSAGE_SIZE];
-        try
+
+        Serial.println(message.toString().c_str());
+        std::vector<uint8_t> vec = serializeMessage(message);
+
+        std::copy(vec.begin(), vec.end(), buf);
+        // delete (&message);
+
+        Serial.println("\n raw: ");
+
+        for (int j = 0; j < 20; j++)
         {
-            dummyMessage();
-            Serial.println(message.toString().c_str());
-            serializeMessage(message, payload);
-
-            Serial.println("\n raw: ");
-
-            for (int j = 0; j < 20; j++)
+            uint8_t value = buf[j];
+            for (int i = 7; i >= 0; i--)
             {
-                uint8_t value = payload[j];
-                for (int i = 7; i >= 0; i--)
-                {
-                    Serial.print((value >> i) & 1);
-                }
-                Serial.println(); // Print a newline character after each element
+                Serial.print((value >> i) & 1);
             }
-            Serial.println("%%%%%%%%%%%%%%");
+            Serial.println(); // Print a newline character after each element
         }
-        catch (std::invalid_argument)
-        {
-            Serial.println("payload broken");
-        }
+        Serial.println("%%%%%%%%%%%%%%");
+
         nextTxTime += TXINTERVAL;
         Serial.print("Sending to bridge n.");
         Serial.print(GATEWAY_ADDRESS);
         Serial.print(" res=");
 
-        res = manager.sendtoWait(payload, sizeof(payload), GATEWAY_ADDRESS);
+        res = manager.sendtoWait(buf, sizeof(buf), GATEWAY_ADDRESS);
         Serial.println(res);
         if (res == RH_ROUTER_ERROR_NONE)
         {
@@ -113,26 +92,26 @@ void loop()
             // Data not delivered to the next node.
             Serial.println("sendtoWait failed. Are the bridge/intermediate mesh nodes running?");
         }
-        // nextTxTime += TXINTERVAL;
-        // try
-        // {
-        //     testingHeaderParsing();
-        // }
-        // catch (std::invalid_argument)
-        // {
-        //     Serial.println("payload broken");
-        // }
     }
-
-    // uint8_t len = sizeof(buf);
-    // uint8_t from;
-    // if (manager.recvfromAck(buf, &len, &from))
+    // nextTxTime += TXINTERVAL;
+    // try
     // {
-    //     Serial.print("message from node n.");
-    //     Serial.print(from);
-    //     Serial.print(": ");
-    //     Serial.print((char *)buf);
-    //     Serial.print(" rssi: ");
-    //     Serial.println(rf95.lastRssi());
+    //     testingHeaderParsing();
+    // }
+    // catch (std::invalid_argument)
+    // {
+    //     Serial.println("payload broken");
     // }
 }
+
+// uint8_t len = sizeof(buf);
+// uint8_t from;
+// if (manager.recvfromAck(buf, &len, &from))
+// {
+//     Serial.print("message from node n.");
+//     Serial.print(from);
+//     Serial.print(": ");
+//     Serial.print((char *)buf);
+//     Serial.print(" rssi: ");
+//     Serial.println(rf95.lastRssi());
+// }

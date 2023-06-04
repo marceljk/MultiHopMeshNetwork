@@ -3,17 +3,33 @@
 std::set<int> validControlPackageValues{CONNECT, CONNACK, PUBLISH, PUBACK, SUBSCRIBE, SUBACK, DISCONNECT};
 
 // Function to parse a message
-Message parseMessage(uint8_t *rawMessage, size_t rawMessageSize)
+Message parseMessage(std::vector<uint8_t> &rawMessage)
 {
-    Message message;
+    if (rawMessage.size() < HEADER_SIZE)
+    {
+        throw std::invalid_argument("Invalid message size");
+    }
 
-    message.header = parseHeader(rawMessage);
-    message.variableHeader = parseVariableHeader(message.header.controlPacketType, rawMessage + HEADER_SIZE);
+    FixedHeader header = parseHeader(rawMessage);
+    rawMessage.erase(rawMessage.begin(), rawMessage.begin() + HEADER_SIZE);
 
-    size_t payloadSize = message.header.packetLength - HEADER_SIZE - message.variableHeader.size;
+    if (header.packetLength > rawMessage.size())
+    {
+        throw std::invalid_argument("Invalid packet length in header");
+    }
 
-    memcpy(message.payload, rawMessage + HEADER_SIZE + message.variableHeader.size, payloadSize);
-    message.payloadSize = payloadSize;
+    VariableHeader variableHeader = parseVariableHeader(header.controlPacketType, rawMessage);
+    rawMessage.erase(rawMessage.begin(), rawMessage.begin() + variableHeader.size);
+
+    if (variableHeader.size > rawMessage.size())
+    {
+        throw std::invalid_argument("Invalid variable header size");
+    }
+
+    std::string payload(reinterpret_cast<const char *>(rawMessage.data()), header.packetLength - HEADER_SIZE - variableHeader.size);
+    Message message = Message(header, variableHeader, payload);
+
+    rawMessage.erase(rawMessage.begin(), rawMessage.begin() + header.packetLength);
 
     return message;
 }
@@ -28,37 +44,27 @@ const uint8_t DUP_FLAG = 0b00001000;
 const uint8_t QOS_FLAG = 0b00000110;
 const uint8_t RETAIN_FLAG = 0b00000001;
 
-Header parseHeader(uint8_t rawHeader[2])
+FixedHeader parseHeader(std::vector<uint8_t> &rawHeader)
 {
-    if (rawHeader == nullptr)
-    {
-        throw std::invalid_argument("rawHeader cannot be null");
-    }
-
-    Header header;
     uint8_t controlPacketIndex = (rawHeader[0] & CONTROL_PACKET_MASK) >> CONTROL_PACKET_SHIFT;
+    ControlPacketType controlPacketType = static_cast<ControlPacketType>(controlPacketIndex);
 
-    header.controlPacketType = static_cast<ControlPacketType>(controlPacketIndex);
-    if (validControlPackageValues.find(header.controlPacketType) == validControlPackageValues.end())
+    if (validControlPackageValues.find(controlPacketType) == validControlPackageValues.end())
     {
         throw std::invalid_argument("Invalid control packet type");
     }
 
-    header.isDuplicate = (rawHeader[0] & DUP_FLAG);
-    header.qosLevel = (rawHeader[0] & QOS_FLAG) >> 1;
-    header.retain = (rawHeader[0] & RETAIN_FLAG) > 0;
+    bool duplicate = (rawHeader[0] & DUP_FLAG);
+    int qosLevel = (rawHeader[0] & QOS_FLAG) >> 1;
+    bool retain = (rawHeader[0] & RETAIN_FLAG) > 0;
+    int packetLength = rawHeader[1];
 
-    header.packetLength = rawHeader[1];
-
-    return header;
+    return FixedHeader(controlPacketType, duplicate, retain, qosLevel, packetLength);
 }
 
-void serializeHeader(Header header, uint8_t rawHeader[2])
+std::vector<uint8_t> serializeHeader(FixedHeader &header)
 {
-    if (validControlPackageValues.find(header.controlPacketType) == validControlPackageValues.end())
-    {
-        throw std::invalid_argument("Invalid control packet type");
-    }
+    std::vector<uint8_t> rawHeader(HEADER_SIZE);
 
     // Insert the control packet index into the first byte
     uint8_t controlPacketIndex = static_cast<uint8_t>(header.controlPacketType);
@@ -77,264 +83,185 @@ void serializeHeader(Header header, uint8_t rawHeader[2])
 
     // Insert the packet length into the second byte
     rawHeader[1] = header.packetLength;
+    return rawHeader;
 }
 
-VariableHeader parseVariableHeader(ControlPacketType controlPacketType, uint8_t *rawVariableHeader)
+VariableHeader parseVariableHeader(ControlPacketType controlPacketType, std::vector<uint8_t> &rawVariableHeader)
 {
-    if (rawVariableHeader == nullptr)
-    {
-        throw std::invalid_argument("rawVariableHeader cannot be null");
-    }
-    VariableHeader variableHeader;
+
+    VariableHeader variableHeader = VariableHeader(0, controlPacketType);
     variableHeader.controlPacketType = controlPacketType;
 
     switch (controlPacketType)
     {
     case CONNECT:
-        variableHeader.connect.protocolVersion = rawVariableHeader[0];
+    {
+        uint8_t protocolVersion = rawVariableHeader[0];
+        uint8_t uuid[16];
         for (int i = 0; i < 16; i++)
         {
-            variableHeader.connect.uuid[i] = rawVariableHeader[i + 1];
+            uuid[i] = rawVariableHeader[i + 1];
         }
 
-        variableHeader.size = 17;
+        size_t size = 17;
+
+        variableHeader = ConnectHeader(size, controlPacketType, protocolVersion, uuid);
         break;
+    }
 
     case CONNACK:
-        variableHeader.connack.returnCode = rawVariableHeader[0];
-        variableHeader.size = 1;
+    {
+        uint8_t returnCode = rawVariableHeader[0];
+        size_t size = 1;
+
+        variableHeader = ConnackHeader(size, controlPacketType, returnCode);
         break;
+    }
 
     case PUBLISH:
-        variableHeader.publish.topicNameLength = (rawVariableHeader[0] << 8) | rawVariableHeader[1];
-        variableHeader.publish.topicName = new char[variableHeader.publish.topicNameLength];
-        memcpy(variableHeader.publish.topicName, &rawVariableHeader[2], variableHeader.publish.topicNameLength);
+    {
+        uint8_t topicNameLength = rawVariableHeader[0];
+        std::string topicName(reinterpret_cast<const char *>(rawVariableHeader.data()), rawVariableHeader.size());
 
-        variableHeader.publish.packetID = (rawVariableHeader[variableHeader.publish.topicNameLength + 2] << 8) | rawVariableHeader[variableHeader.publish.topicNameLength + 3];
+        uint16_t packetID = (rawVariableHeader[topicNameLength + 1] << 8) | rawVariableHeader[topicNameLength + 2];
 
-        variableHeader.size = 4 + variableHeader.publish.topicNameLength;
+        size_t size = 3 + topicNameLength;
+        variableHeader = PublishHeader(size, controlPacketType, topicNameLength, topicName, packetID);
         break;
-
+    }
     case PUBACK:
-        variableHeader.puback.packetID = (rawVariableHeader[0] << 8) | rawVariableHeader[1];
+    {
+        uint16_t packetID = (rawVariableHeader[0] << 8) | rawVariableHeader[1];
+        size_t size = 2;
 
-        variableHeader.size = 2;
+        variableHeader = PubackHeader(size, controlPacketType, packetID);
         break;
+    }
 
     case SUBSCRIBE:
-        variableHeader.subscribe.topicNameLength = (rawVariableHeader[0] << 8) | rawVariableHeader[1];
-        variableHeader.subscribe.topicName = new char[variableHeader.subscribe.topicNameLength];
-        memcpy(variableHeader.subscribe.topicName, &rawVariableHeader[2], variableHeader.subscribe.topicNameLength);
+    {
+        uint8_t topicNameLength = rawVariableHeader[0];
+        std::string topicName(reinterpret_cast<const char *>(rawVariableHeader.data()), rawVariableHeader.size());
 
-        variableHeader.subscribe.packetID = (rawVariableHeader[variableHeader.subscribe.topicNameLength + 2] << 8) | rawVariableHeader[variableHeader.subscribe.topicNameLength + 3];
+        uint16_t packetID = (rawVariableHeader[topicNameLength + 1] << 8) | rawVariableHeader[topicNameLength + 2];
 
-        variableHeader.size = 4 + variableHeader.subscribe.topicNameLength;
+        size_t size = 3 + topicNameLength;
+        variableHeader = PublishHeader(size, controlPacketType, topicNameLength, topicName, packetID);
 
+        SubscribeHeader(size, controlPacketType, topicNameLength, topicName, packetID);
         break;
+    }
 
     case SUBACK:
-        variableHeader.suback.packetID = (rawVariableHeader[0] << 8) | rawVariableHeader[1];
+    {
+        uint16_t packetID = (rawVariableHeader[0] << 8) | rawVariableHeader[1];
+        size_t size = 2;
 
-        variableHeader.size = 2;
+        variableHeader = SubackHeader(size, controlPacketType, packetID);
         break;
+    }
 
     default:
-        variableHeader.size = 0;
+    {
         break;
+    }
     }
 
     return variableHeader;
 }
 
-void serializeVariableHeader(VariableHeader variableHeader, uint8_t *rawVariableHeader)
+constexpr size_t UUID_SIZE = 16;
+constexpr uint8_t SHIFT_BYTE = 8;
+
+std::vector<uint8_t> serializeVariableHeader(VariableHeader &variableHeader)
 {
-    if (rawVariableHeader == nullptr)
-    {
-        throw std::invalid_argument("rawVariableHeader cannot be null");
-    }
+    std::vector<uint8_t> rawVariableHeader(2);
 
     switch (variableHeader.controlPacketType)
     {
     case CONNECT:
-        rawVariableHeader[0] = variableHeader.connect.protocolVersion;
+    {
+        ConnectHeader &connectHeader = static_cast<ConnectHeader &>(variableHeader);
+        rawVariableHeader[0] = connectHeader.protocolVersion;
         for (int i = 0; i < 16; i++)
         {
-            rawVariableHeader[i + 1] = variableHeader.connect.uuid[i];
+            rawVariableHeader[i + 1] = connectHeader.uuid[i];
         }
         break;
-
+    }
     case CONNACK:
-        rawVariableHeader[0] = variableHeader.connack.returnCode;
+    {
+        ConnackHeader &connackHeader = static_cast<ConnackHeader &>(variableHeader);
+        rawVariableHeader[0] = connackHeader.returnCode;
         break;
-
+    }
     case PUBLISH:
-        rawVariableHeader[0] = variableHeader.publish.topicNameLength >> 8;
-        rawVariableHeader[1] = variableHeader.publish.topicNameLength;
-        memcpy(&rawVariableHeader[2], variableHeader.publish.topicName, variableHeader.publish.topicNameLength);
+    {
+        PublishHeader &publishHeader = static_cast<PublishHeader &>(variableHeader);
 
-        rawVariableHeader[variableHeader.publish.topicNameLength + 2] = variableHeader.publish.packetID >> 8;
-        rawVariableHeader[variableHeader.publish.topicNameLength + 3] = variableHeader.publish.packetID;
+        rawVariableHeader[0] = publishHeader.topicNameLength >> SHIFT_BYTE;
+        rawVariableHeader[1] = publishHeader.topicNameLength;
+        std::copy(publishHeader.topicName.begin(), publishHeader.topicName.end(), rawVariableHeader.begin() + 3);
+
+        if (rawVariableHeader.size() < publishHeader.topicNameLength + 4)
+        {
+            throw std::out_of_range("Buffer size too small for operation");
+        }
+
+        rawVariableHeader[publishHeader.topicNameLength + 2] = publishHeader.packetID >> SHIFT_BYTE;
+        rawVariableHeader[publishHeader.topicNameLength + 3] = publishHeader.packetID;
         break;
+    }
 
     case PUBACK:
-        rawVariableHeader[0] = variableHeader.puback.packetID >> 8;
-        rawVariableHeader[1] = variableHeader.puback.packetID;
+    {
+        PubackHeader &pubackHeader = static_cast<PubackHeader &>(variableHeader);
+
+        rawVariableHeader[0] = pubackHeader.packetID >> 8;
+        rawVariableHeader[1] = pubackHeader.packetID;
         break;
+    }
 
     case SUBSCRIBE:
-        rawVariableHeader[0] = variableHeader.subscribe.topicNameLength >> 8;
-        rawVariableHeader[1] = variableHeader.subscribe.topicNameLength;
-        memcpy(&rawVariableHeader[2], variableHeader.subscribe.topicName, variableHeader.subscribe.topicNameLength);
+    {
+        SubscribeHeader &subscribeHeader = static_cast<SubscribeHeader &>(variableHeader);
 
-        rawVariableHeader[variableHeader.subscribe.topicNameLength + 2] = variableHeader.subscribe.packetID >> 8;
-        rawVariableHeader[variableHeader.subscribe.topicNameLength + 3] = variableHeader.subscribe.packetID;
+        rawVariableHeader[0] = subscribeHeader.topicNameLength >> 8;
+        rawVariableHeader[1] = subscribeHeader.topicNameLength;
+        std::copy(subscribeHeader.topicName.begin(), subscribeHeader.topicName.end(), rawVariableHeader.begin() + 3);
+
+        rawVariableHeader[subscribeHeader.topicNameLength + 3] = subscribeHeader.packetID;
+        rawVariableHeader[subscribeHeader.topicNameLength + 2] = subscribeHeader.packetID >> 8;
         break;
+    }
 
     case SUBACK:
-        rawVariableHeader[0] = variableHeader.suback.packetID >> 8;
-        rawVariableHeader[1] = variableHeader.suback.packetID;
+    {
+        SubackHeader &subackHeader = static_cast<SubackHeader &>(variableHeader);
+
+        rawVariableHeader[0] = subackHeader.packetID >> 8;
+        rawVariableHeader[1] = subackHeader.packetID;
         break;
-
-    default:
-        break;
     }
+    }
+    return rawVariableHeader;
 }
 
-// Function to create a message
-void serializeMessage(Message message, uint8_t *msg)
+std::vector<uint8_t> serializeMessage(Message &message)
 {
-    serializeVariableHeader(message.variableHeader, msg + 2);
+    std::vector<uint8_t> serializedVariableHeader = serializeVariableHeader(message.variableHeader);
+    size_t summedHeaderSize = message.variableHeader.size + HEADER_SIZE;
 
-    size_t summedHeaderSize = message.variableHeader.size + 2;
-
-    // Ensure the message does not exceed MAX_MESSAGE_SIZE
-    if (message.payloadSize > MAX_MESSAGE_SIZE - summedHeaderSize)
+    if (message.payload.size() > MAX_MESSAGE_SIZE - summedHeaderSize)
     {
-        message.payloadSize = MAX_MESSAGE_SIZE - summedHeaderSize;
+        message.payload.resize(MAX_MESSAGE_SIZE - summedHeaderSize);
     }
 
-    message.header.packetLength = summedHeaderSize + message.payloadSize;
-    serializeHeader(message.header, msg);
+    message.header.packetLength = summedHeaderSize + message.payload.size();
+    std::vector<uint8_t> serializedMessage = serializeHeader(message.header);
 
-    memcpy(msg + summedHeaderSize, message.payload, message.payloadSize);
-}
+    serializedMessage.insert(serializedMessage.end(), serializedVariableHeader.begin(), serializedVariableHeader.end());
+    serializedMessage.insert(serializedMessage.end(), message.payload.begin(), message.payload.end());
 
-bool operator==(const Header &lhs, const Header &rhs)
-{
-    return lhs.controlPacketType == rhs.controlPacketType && lhs.isDuplicate == rhs.isDuplicate && lhs.qosLevel == rhs.qosLevel;
-}
-
-bool operator!=(const Header &lhs, const Header &rhs)
-{
-    return !(lhs == rhs);
-}
-
-void generateRandomMessage(Message msg)
-{
-    Header header = Header((ControlPacketType)random(validControlPackageValues.size()), (bool)random(0, 1), (bool)random(0, 1), (uint8_t)random(0, 1));
-
-    Serial.println("###########");
-    Serial.println("Header Coinflip: ");
-    Serial.println(header.toString().c_str());
-    Serial.println("######");
-
-    VariableHeader variableHeader;
-    variableHeader.controlPacketType = header.controlPacketType;
-
-    char *topicName = nullptr;
-
-    try
-    {
-        switch (variableHeader.controlPacketType)
-        {
-        case CONNECT:
-        {
-            variableHeader.connect.protocolVersion = random(0, 120);
-            for (int i = 0; i < 16; i++)
-            {
-                variableHeader.connect.uuid[i] = (uint8_t)random(0, 255);
-            }
-
-            variableHeader.size = 17;
-            break;
-        }
-
-        case CONNACK:
-        {
-            uint8_t options[] = {0, 1, 3, 5};
-            variableHeader.connack.returnCode = options[random(3)];
-            variableHeader.size = 1;
-            break;
-        }
-
-        case PUBLISH:
-        {
-            variableHeader.publish.topicNameLength = random(0, 30);
-            topicName = new char[variableHeader.publish.topicNameLength];
-            variableHeader.publish.topicName = topicName;
-            for (int i = 0; i < variableHeader.publish.topicNameLength; i++)
-            {
-                variableHeader.publish.topicName[i] = (char)random(255);
-            }
-
-            variableHeader.publish.packetID = (uint16_t)random(65536);
-
-            variableHeader.size = 4 + variableHeader.publish.topicNameLength;
-            break;
-        }
-
-        case PUBACK:
-        {
-            variableHeader.puback.packetID = (uint16_t)random(65536);
-
-            variableHeader.size = 2;
-            break;
-        }
-
-        case SUBSCRIBE:
-        {
-            variableHeader.subscribe.topicNameLength = random(0, 30);
-            topicName = new char[variableHeader.subscribe.topicNameLength];
-            variableHeader.subscribe.topicName = topicName;
-            for (int i = 0; i < variableHeader.subscribe.topicNameLength; i++)
-            {
-                variableHeader.subscribe.topicName[i] = (char)random(255);
-            }
-
-            variableHeader.subscribe.packetID = (uint16_t)random(65536);
-
-            variableHeader.size = 4 + variableHeader.subscribe.topicNameLength;
-            break;
-        }
-
-        case SUBACK:
-        {
-            variableHeader.suback.packetID = (uint16_t)random(65536);
-
-            variableHeader.size = 2;
-            break;
-        }
-
-        default:
-            variableHeader.size = 0;
-            break;
-        }
-    }
-    catch (std::bad_alloc &ba)
-    {
-        std::cerr << "bad_alloc caught: " << ba.what() << '\n';
-        delete[] topicName;
-        throw;
-    }
-
-    msg.payloadSize = random(20, 255);
-    msg.payload[msg.payloadSize];
-    for (int i = 0; i < msg.payloadSize; i++)
-    {
-        msg.payload[i] = random(65, 122);
-    }
-    msg.header = header;
-    msg.variableHeader = variableHeader;
-
-    delete[] topicName;
+    return serializedMessage;
 }

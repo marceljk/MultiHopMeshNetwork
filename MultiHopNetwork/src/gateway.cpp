@@ -1,9 +1,11 @@
 #include <RHMesh.h>
 #include <RH_RF95.h>
 #include <SPI.h>
+
 #include <config.h>
 #include <protocol.h>
-#include <testing.h>
+#include <protocol_common.h>
+#include <variable_headers.h>
 
 RH_RF95 rf95(LLG_CS, LLG_DI0);
 
@@ -50,7 +52,8 @@ void loop()
         Serial.print(": ");
         try
         {
-            Message msg = parseMessage(buf, RH_MESH_MAX_MESSAGE_LEN);
+            std::vector<uint8_t> vec(&buf[0], &buf[len]);
+            Message msg = parseMessage(vec);
             Serial.print(msg.toString().c_str());
         }
         catch (std::invalid_argument)
