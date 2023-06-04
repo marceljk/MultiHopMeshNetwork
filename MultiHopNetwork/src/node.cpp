@@ -46,7 +46,7 @@ void setup()
     message = dummyMessage();
 }
 
-uint8_t buf[RH_MESH_MAX_MESSAGE_LEN];
+uint8_t buf[RH_MESH_MAX_MESSAGE_LEN - 5];
 uint8_t res;
 
 void loop()
@@ -68,7 +68,7 @@ void loop()
             {
                 Serial.print((value >> i) & 1);
             }
-            Serial.println(); // Print a newline character after each element
+            Serial.println();
         }
         Serial.println("%%%%%%%%%%%%%%");
 
@@ -76,7 +76,7 @@ void loop()
         Serial.print("Sending to bridge n.");
         Serial.print(GATEWAY_ADDRESS);
         Serial.print(" res=");
-
+        // manager.sendto(buf, sizeof(buf), RH_BROADCAST_ADDRESS);
         res = manager.sendtoWait(buf, sizeof(buf), GATEWAY_ADDRESS);
         Serial.println(res);
         if (res == RH_ROUTER_ERROR_NONE)

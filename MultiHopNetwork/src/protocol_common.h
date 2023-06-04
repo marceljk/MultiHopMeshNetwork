@@ -2,14 +2,8 @@
 #define PROTOCOL_COMMON_H
 
 #include <Arduino.h>
-
-#include <iomanip>
-#include <iostream>
 #include <string>
-#include <set>
 #include <variable_headers.h>
-
-#include <variant>
 
 #define MAX_MESSAGE_SIZE 244
 #define HEADER_SIZE 2

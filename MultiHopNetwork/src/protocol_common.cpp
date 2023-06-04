@@ -3,11 +3,8 @@
 std::string Message::toString()
 {
     std::string str = "Message: \n";
-
-    str += "Header: ";
-    str += header.toString();
-    str += "\nVariable Header: ";
-    str += variableHeader.toString();
+    str += "\n" + header.toString();
+    str += "\n" + variableHeader.toString();
     str += "\nPayload: ";
     str += payload;
     return str;
@@ -15,7 +12,7 @@ std::string Message::toString()
 
 std::string FixedHeader::toString()
 {
-    std::string str = "Header \n";
+    std::string str = "Fixed Header \n";
 
     str += "ControlPacketType: ";
     str += std::to_string(static_cast<int>(controlPacketType));

@@ -37,7 +37,7 @@ void setup()
     Serial.println("RF95 ready");
 }
 
-uint8_t buf[RH_MESH_MAX_MESSAGE_LEN];
+uint8_t buf[MAX_MESSAGE_SIZE];
 uint8_t res;
 
 void loop()
@@ -48,32 +48,30 @@ void loop()
     {
         Serial.print("message from node n.");
         Serial.print(from);
-        Serial.print(": ");
+        Serial.print(": \n\n");
         try
         {
-            Message msg = parseIncomingPacket(buf, RH_MESH_MAX_MESSAGE_LEN);
+            Message msg = parseIncomingPacket(buf, MAX_MESSAGE_SIZE);
             Serial.print(msg.toString().c_str());
         }
-        catch (std::invalid_argument)
+        catch (std::invalid_argument e)
         {
-            Serial.println("dumbass");
+            Serial.println(e.what());
         }
-        Serial.println("\n raw: ");
+        Serial.println("\n raw (likely with a few null bytes):");
 
-        for (int j = 0; j < RH_MESH_MAX_MESSAGE_LEN; j++)
+        for (int j = 0; j < MAX_MESSAGE_SIZE; j++)
         {
             uint8_t value = buf[j];
             for (int i = 7; i >= 0; i--)
             {
                 Serial.print((value >> i) & 1);
             }
-            Serial.println(); // Print a newline character after each element
+            Serial.println();
         }
 
         Serial.print(" rssi: ");
         Serial.println(rf95.lastRssi());
         Serial.println("------");
-
-        // #testingVariableHeaderParsing();
     }
 }
