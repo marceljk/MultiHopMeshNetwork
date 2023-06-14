@@ -30,17 +30,19 @@ struct Message
     std::string toString();
 };
 
-Message createConnectionMessage(uint8_t uuid[16]);
+Message createConnectionMessage(const std::array<uint8_t, 16> uuid);
 
-Message createConnackMessage(Message &msg, uint8_t networkID, ConnackReturnCode returnCode = ACCEPTED);
+Message createConnackMessage(const Message &msg, const uint8_t networkID, const ConnackReturnCode returnCode = ACCEPTED);
 
-Message createPublishMessage(std::string topicName, uint16_t packetID, bool duplicate = false, bool retain = false, uint8_t qosLevel = 0);
+Message createPublishMessage(const std::string topicName, const uint16_t packetID, const std::string payload, const bool duplicate = false, const bool retain = false, const uint8_t qosLevel = 0);
 
-Message createPubackMessage(Message &msg);
+Message createPubackMessage(const Message &msg);
 
-Message createSubscribeMessage(std::string topicName, uint16_t packetID, bool duplicate = false, bool retain = false, uint8_t qosLevel = 1);
+Message createSubscribeMessage(const std::string topicName, const uint16_t packetID, const bool duplicate = false, const bool retain = false, const uint8_t qosLevel = 1);
 
-Message createSubackMessage(Message &msg);
+Message createSubackMessage(const Message &msg);
 
-Message createDisconnectMessage(uint8_t uuid[16]);
+Message createDisconnectMessage(const std::array<uint8_t, 16> uuid);
+
+void printUUID(const std::array<uint8_t, 16> uuid, std::string location);
 #endif

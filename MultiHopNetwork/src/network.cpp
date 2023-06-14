@@ -40,19 +40,17 @@ void MeshNetwork::loop()
         try
         {
             Message msg = parseIncomingPacket(buf, MAX_MESSAGE_SIZE);
-            handleMessage(msg, from);
-
             Serial.println(msg.toString().c_str());
+            Serial.print("rssi: ");
+            Serial.println(rf95.lastRssi());
+            Serial.println("----------");
+            handleMessage(msg, from);
         }
         catch (std::invalid_argument e)
         {
             Serial.println("Parsing failed with the following error:");
             Serial.println(e.what());
         }
-
-        Serial.print("rssi: ");
-        Serial.println(rf95.lastRssi());
-        Serial.println("----------");
     }
 }
 

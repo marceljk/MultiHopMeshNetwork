@@ -9,11 +9,6 @@
 #include <protocol.h>
 #include <config.h>
 
-// Forward declaration of Message class
-class Message;
-
-
-
 class MeshNetwork
 {
 private:

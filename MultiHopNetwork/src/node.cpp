@@ -1,11 +1,11 @@
 #include "node.h"
 
-#define INTERVAL 3000
+#define INTERVAL 8000
 unsigned long nextMsgTime;
 
 MeshNetwork network(HARDCODED_NETWORK_ID ? HARDCODED_NETWORK_ID : INITIAL_NODE_ADDRESS, handle);
 
-uint8_t uuid[16];
+std::array<uint8_t, 16> uuid;
 uint8_t networkID;
 
 bool acknowledged = false;
@@ -15,14 +15,23 @@ void setup()
     Preferences prefs;
     prefs.begin("network", false);
 
-    // Check if we have a stored UUID, if not generate one
-    if (!prefs.getBytesLength("uuid") || REGENERATING_UUID_EACH_START)
+    if (HARDCODED_UUID != nullptr)
     {
-        generateUUID(uuid);
-        prefs.putBytes("uuid", uuid, sizeof(uuid));
+        std::copy(HARDCODED_UUID, HARDCODED_UUID + 16, uuid.begin());
+    }
+    else if (!prefs.getBytesLength("uuid") || REGENERATING_UUID_EACH_START)
+    {
+        generateUUID(uuid.data()); // Assuming generateUUID takes a pointer to the start of the UUID array
+        prefs.putBytes("uuid", uuid.data(), uuid.size());
+    }
+    else
+    {
+        prefs.getBytes("uuid", uuid.data(), 16);
     }
 
     network.setup();
+
+    printUUID(uuid, "first init");
 
     Message msg = createConnectionMessage(uuid);
     network.sendMessage(GATEWAY_ADDRESS, msg);
@@ -30,7 +39,7 @@ void setup()
     prefs.end();
 }
 
-Message message = createSubscribeMessage("v1/backend/measurements", 1234);
+// Message message = createSubscribeMessage("v1/backend/measurements", 1234);
 uint8_t buf[RH_MESH_MAX_MESSAGE_LEN - 5];
 uint8_t res;
 
@@ -40,10 +49,13 @@ void loop()
 
     if (millis() > nextMsgTime && acknowledged)
     {
+        // Message message = createConnectionMessage(uuid);
+        Message message = createPublishMessage("v1/backend/measurements", 1234, "lorem ipsum dolor sit amet oder so");
         nextMsgTime += INTERVAL;
 
         try
         {
+            printUUID(uuid, "main loop ");
             serializeMessage(message, buf, RH_MAX_MESSAGE_LEN);
             network.sendMessage(GATEWAY_ADDRESS, message);
         }

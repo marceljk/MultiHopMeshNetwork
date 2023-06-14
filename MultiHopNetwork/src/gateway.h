@@ -20,15 +20,15 @@
 class Node
 {
 public:
-    uint8_t uuid[16];
+    std::array<uint8_t, 16> uuid;
     uint8_t networkId;
 
-    Node(const uint8_t uuid[16], uint8_t networkId) {}
+    Node(const std::array<uint8_t, 16> uuid, uint8_t networkId);
 };
 
-void addNode(const uint8_t uuid[16], uint8_t networkId);
+void addNode(const std::array<uint8_t, 16> uuid, uint8_t networkId);
 std::vector<Node *> getNodes(uint8_t networkId);
-void deleteNode(uint8_t networkId, const uint8_t uuid[16]);
+void deleteNode(uint8_t networkId, const std::array<uint8_t, 16> &uuid);
 
 void handle(Message &msg, uint8_t from);
 

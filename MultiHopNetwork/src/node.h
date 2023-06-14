@@ -20,7 +20,6 @@
 
 void handle(Message &msg, uint8_t from);
 void generateUUID(byte *uuid);
-void chill(Message &msg, uint8_t from);
 
 void setup();
 void loop();

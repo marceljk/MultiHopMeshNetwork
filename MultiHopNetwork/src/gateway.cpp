@@ -9,7 +9,6 @@ void handle(Message &msg, uint8_t from)
     {
     case CONNECT:
     {
-        Serial.println("-!-!-!");
         ConnectHeader *connectHeader = static_cast<ConnectHeader *>(msg.variableHeader.get());
 
         uint8_t networkId = connectedNodes.size() + 2;
@@ -30,7 +29,7 @@ void handle(Message &msg, uint8_t from)
             gatewayNetwork.sendMessage(from, ackMessage);
         }
 
-        // TODO: DO SOMETHING WITH RECEIVED MESSAGE
+        // TODO @GateWay: DO SOMETHING WITH RECEIVED MESSAGE
         break;
     }
 
@@ -38,7 +37,7 @@ void handle(Message &msg, uint8_t from)
     {
         PubackHeader *pubackHeader = static_cast<PubackHeader *>(msg.variableHeader.get());
 
-        // TODO: MARK MESSAGE AS RECEIVED ON NODE (or similar. Not relevant for our project)
+        // TODO @noone: MARK MESSAGE AS RECEIVED ON NODE (or similar. Not relevant for our project)
 
         break;
     }
@@ -47,7 +46,7 @@ void handle(Message &msg, uint8_t from)
     {
         std::vector<Node *> nodes = getNodes(from);
 
-        // TODO: SUBSCRIBE NODES TO TOPICS (not relevant for our project)
+        // TODO @noone: SUBSCRIBE NODES TO TOPICS (not relevant for our project)
 
         Message ackMessage = createSubackMessage(msg);
         gatewayNetwork.sendMessage(from, ackMessage);
@@ -73,14 +72,13 @@ void loop()
 }
 
 // Node class constructor definition
-Node::Node(const uint8_t uuid[16], uint8_t networkId)
-    : networkId(networkId)
+Node::Node(const std::array<uint8_t, 16> uuid, uint8_t networkId)
+    : networkId(networkId), uuid(uuid)
 {
-    std::memcpy(this->uuid, uuid, sizeof(this->uuid));
 }
 
 // Function to add a node to the map
-void addNode(const uint8_t uuid[16], uint8_t networkId)
+void addNode(const std::array<uint8_t, 16> uuid, uint8_t networkId)
 {
     connectedNodes.emplace(networkId, Node(uuid, networkId));
 }
@@ -98,12 +96,12 @@ std::vector<Node *> getNodes(uint8_t networkId)
 }
 
 // Function to delete a node with a given network ID and UUID
-void deleteNode(uint8_t networkId, const uint8_t uuid[16])
+void deleteNode(uint8_t networkId, const std::array<uint8_t, 16> &uuid)
 {
     auto range = connectedNodes.equal_range(networkId);
     for (auto i = range.first; i != range.second; ++i)
     {
-        if (std::memcmp(i->second.uuid, uuid, sizeof(i->second.uuid)) == 0)
+        if (i->second.uuid == uuid)
         {
             connectedNodes.erase(i);
             break;

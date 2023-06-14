@@ -14,11 +14,8 @@ Message parseIncomingPacket(uint8_t *incomingPacket, size_t availableSpace)
         throw std::invalid_argument("Packet length in header exceeds available space");
     }
     std::unique_ptr<VariableHeader> packetVariableHeader = parseVariableHeader(packetHeader.controlPacketType, incomingPacket + HEADER_SIZE);
-    if (availableSpace < packetVariableHeader->size) // use arrow operator to access size
-    {
-        throw std::invalid_argument("Variable header size exceeds available space");
-    }
-    std::string packetPayload(incomingPacket + HEADER_SIZE + packetVariableHeader->size, incomingPacket + packetHeader.packetLength); // use arrow operator to access size
+
+    std::string packetPayload(incomingPacket + HEADER_SIZE + packetVariableHeader->size, incomingPacket + packetHeader.packetLength);
     Message finalMessage = Message(packetHeader, std::move(packetVariableHeader), packetPayload);
     return finalMessage;
 }
@@ -59,7 +56,7 @@ std::unique_ptr<VariableHeader> parseVariableHeader(ControlPacketType controlPac
     case CONNECT:
     {
         uint8_t protocolVersion = serializedVariableHeader[0];
-        uint8_t uuid[16];
+        std::array<uint8_t, 16> uuid;
         for (int i = 0; i < 16; i++)
         {
             uuid[i] = serializedVariableHeader[i + 1];
@@ -72,10 +69,10 @@ std::unique_ptr<VariableHeader> parseVariableHeader(ControlPacketType controlPac
     {
         ConnackReturnCode returnCode = static_cast<ConnackReturnCode>(serializedVariableHeader[0]);
         uint8_t networkID = serializedVariableHeader[1];
-        uint8_t uuid[16];
+        std::array<uint8_t, 16> uuid;
         for (int i = 0; i < 16; i++)
         {
-            uuid[i] = serializedVariableHeader[i + 1];
+            uuid[i] = serializedVariableHeader[i + 2];
         }
         variableHeader = std::unique_ptr<VariableHeader>(new ConnackHeader(returnCode, networkID, uuid));
         break;
@@ -107,6 +104,7 @@ std::unique_ptr<VariableHeader> parseVariableHeader(ControlPacketType controlPac
         uint16_t packetID = (serializedVariableHeader[topicNameLength + 1] << 8) | serializedVariableHeader[topicNameLength + 2];
 
         variableHeader = std::unique_ptr<VariableHeader>(new SubscribeHeader(topicNameLength, topicName, packetID));
+
         break;
     }
 
@@ -119,7 +117,7 @@ std::unique_ptr<VariableHeader> parseVariableHeader(ControlPacketType controlPac
     }
     case DISCONNECT:
     {
-        uint8_t uuid[16];
+        std::array<uint8_t, 16> uuid;
         for (int i = 0; i < 16; i++)
         {
             uuid[i] = serializedVariableHeader[i];
@@ -180,6 +178,8 @@ void serializeVariableHeader(VariableHeader *variableHeader, uint8_t *serialized
             {
                 serializedVariableHeaderLocation[i + 1] = connectHeader->uuid[i];
             }
+
+            printUUID(connectHeader->uuid, "serialize - CONNECT");
         }
         break;
     }
