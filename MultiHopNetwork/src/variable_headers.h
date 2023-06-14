@@ -5,6 +5,8 @@
 
 #include <Arduino.h>
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
 
 enum ControlPacketType
 {
@@ -17,6 +19,14 @@ enum ControlPacketType
     DISCONNECT = 14
 };
 
+enum ConnackReturnCode
+{
+    ACCEPTED = 0,
+    UNSUPPORTED_VERSION = 1,
+    UNAVAILABLE = 3,
+    UNAUTHORIZED = 5,
+};
+
 struct VariableHeader
 {
     size_t size;
@@ -24,6 +34,7 @@ struct VariableHeader
 
     VariableHeader(size_t size, ControlPacketType controlPacketType) : size(size), controlPacketType(controlPacketType) {}
     virtual std::string toString();
+    virtual ~VariableHeader() = default;
 };
 
 struct ConnectHeader : VariableHeader
@@ -31,7 +42,7 @@ struct ConnectHeader : VariableHeader
     uint8_t protocolVersion;
     uint8_t uuid[16];
 
-    ConnectHeader(size_t size, ControlPacketType controlPacketType, uint8_t protocolVersion, uint8_t *uuid) : VariableHeader(size, controlPacketType), protocolVersion(protocolVersion)
+    ConnectHeader(uint8_t protocolVersion, uint8_t *uuid) : VariableHeader(17, CONNECT), protocolVersion(protocolVersion)
     {
         memcpy(this->uuid, uuid, 16);
     }
@@ -40,9 +51,14 @@ struct ConnectHeader : VariableHeader
 
 struct ConnackHeader : VariableHeader
 {
-    uint8_t returnCode;
+    ConnackReturnCode returnCode;
+    uint8_t networkID;
+    uint8_t uuid[16];
 
-    ConnackHeader(size_t size, ControlPacketType controlPacketType, uint8_t returnCode) : VariableHeader(size, controlPacketType), returnCode(returnCode) {}
+    ConnackHeader(ConnackReturnCode returnCode, uint8_t networkID, uint8_t *uuid) : VariableHeader(2, CONNACK), returnCode(returnCode), networkID(networkID)
+    {
+        memcpy(this->uuid, uuid, 16);
+    }
     std::string toString() override;
 };
 
@@ -52,7 +68,7 @@ struct PublishHeader : VariableHeader
     std::string topicName;
     uint16_t packetID;
 
-    PublishHeader(size_t size, ControlPacketType controlPacketType, uint8_t topicNameLength, std::string topicName, uint16_t packetID) : VariableHeader(size, controlPacketType), topicNameLength(topicNameLength), topicName(topicName), packetID(packetID) {}
+    PublishHeader(uint8_t topicNameLength, std::string topicName, uint16_t packetID) : VariableHeader(topicNameLength + 3, PUBLISH), topicNameLength(topicNameLength), topicName(topicName), packetID(packetID) {}
     std::string toString() override;
 };
 
@@ -60,7 +76,7 @@ struct PubackHeader : VariableHeader
 {
     uint16_t packetID;
 
-    PubackHeader(size_t size, ControlPacketType controlPacketType, uint16_t packetID) : VariableHeader(size, controlPacketType), packetID(packetID) {}
+    PubackHeader(uint16_t packetID) : VariableHeader(2, PUBACK), packetID(packetID) {}
     std::string toString() override;
 };
 
@@ -70,7 +86,7 @@ struct SubscribeHeader : VariableHeader
     std::string topicName;
     uint16_t packetID;
 
-    SubscribeHeader(size_t size, ControlPacketType controlPacketType, uint8_t topicNameLength, std::string topicName, uint16_t packetID) : VariableHeader(size, controlPacketType), topicNameLength(topicNameLength), topicName(topicName), packetID(packetID) {}
+    SubscribeHeader(uint8_t topicNameLength, std::string topicName, uint16_t packetID) : VariableHeader(topicNameLength + 3, SUBSCRIBE), topicNameLength(topicNameLength), topicName(topicName), packetID(packetID) {}
     std::string toString() override;
 };
 
@@ -78,7 +94,17 @@ struct SubackHeader : VariableHeader
 {
     uint16_t packetID;
 
-    SubackHeader(size_t size, ControlPacketType controlPacketType, uint16_t packetID) : VariableHeader(size, controlPacketType), packetID(packetID) {}
+    SubackHeader(uint16_t packetID) : VariableHeader(2, SUBACK), packetID(packetID) {}
+    std::string toString() override;
+};
+
+struct DisconnectHeader : VariableHeader
+{
+    uint8_t uuid[16];
+    DisconnectHeader(uint8_t *uuid) : VariableHeader(16, DISCONNECT)
+    {
+        memcpy(this->uuid, uuid, 16);
+    }
     std::string toString() override;
 };
 

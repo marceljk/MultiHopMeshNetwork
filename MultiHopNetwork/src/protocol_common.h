@@ -4,9 +4,9 @@
 #include <Arduino.h>
 #include <string>
 #include <variable_headers.h>
+#include <memory>
 
-#define MAX_MESSAGE_SIZE 244
-#define HEADER_SIZE 2
+#include "config.h"
 
 struct FixedHeader
 {
@@ -23,13 +23,24 @@ struct FixedHeader
 struct Message
 {
     FixedHeader header;
-    VariableHeader variableHeader;
+    std::unique_ptr<VariableHeader> variableHeader;
     std::string payload;
 
-    Message(FixedHeader hdr, VariableHeader vHdr, std::string pl) : header(hdr), variableHeader(vHdr), payload(pl) {}
+    Message(FixedHeader hdr, std::unique_ptr<VariableHeader> vHdr, std::string pl) : header(hdr), variableHeader(std::move(vHdr)), payload(pl) {}
     std::string toString();
 };
 
-Message dummyMessage();
+Message createConnectionMessage(uint8_t uuid[16]);
 
+Message createConnackMessage(Message &msg, uint8_t networkID, ConnackReturnCode returnCode = ACCEPTED);
+
+Message createPublishMessage(std::string topicName, uint16_t packetID, bool duplicate = false, bool retain = false, uint8_t qosLevel = 0);
+
+Message createPubackMessage(Message &msg);
+
+Message createSubscribeMessage(std::string topicName, uint16_t packetID, bool duplicate = false, bool retain = false, uint8_t qosLevel = 1);
+
+Message createSubackMessage(Message &msg);
+
+Message createDisconnectMessage(uint8_t uuid[16]);
 #endif
