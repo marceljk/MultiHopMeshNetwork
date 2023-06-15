@@ -8,27 +8,30 @@
 #include <cstring>
 #include <array>
 #include <unordered_map>
-#include <vector>
+#include <array>
 
 #include "network.h"
 #include "config.h"
 #include "protocol.h"
 #include "protocol_common.h"
 
-#include "variable_headers.h"
+#include <map>
+#include <string>
 
-class Node
+class Gateway
 {
+private:
+    std::map<uint8_t, std::array<uint8_t, 16>> connectedNodes;
+    uint8_t nextNetworkID;
+
 public:
-    std::array<uint8_t, 16> uuid;
-    uint8_t networkId;
+    Gateway();
 
-    Node(const std::array<uint8_t, 16> uuid, uint8_t networkId);
+    bool addNode(uint8_t networkID, std::array<uint8_t, 16> uuid);
+    uint8_t getNextNetworkID() const;
+    bool deleteNode(uint8_t networkID);
+    std::array<uint8_t, 16> getUUIDByNetworkID(uint8_t networkID);
 };
-
-void addNode(const std::array<uint8_t, 16> uuid, uint8_t networkId);
-std::vector<Node *> getNodes(uint8_t networkId);
-void deleteNode(uint8_t networkId, const std::array<uint8_t, 16> &uuid);
 
 void handle(Message &msg, uint8_t from);
 

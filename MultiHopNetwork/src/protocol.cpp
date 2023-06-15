@@ -2,30 +2,28 @@
 
 std::set<int> validControlPackageValues{CONNECT, CONNACK, PUBLISH, PUBACK, SUBSCRIBE, SUBACK, DISCONNECT};
 
-Message parseIncomingPacket(uint8_t *incomingPacket, size_t availableSpace)
+Message parseIncomingPacket(uint8_t *incomingPacket, size_t packetLength)
 {
-    if (availableSpace < HEADER_SIZE)
+    if (packetLength < HEADER_SIZE)
     {
         throw std::invalid_argument("Insufficient space for header");
     }
     FixedHeader packetHeader = parseFixedHeader(incomingPacket);
-    if (availableSpace < packetHeader.packetLength)
+    if (packetLength < packetHeader.packetLength)
     {
         throw std::invalid_argument("Packet length in header exceeds available space");
     }
     std::unique_ptr<VariableHeader> packetVariableHeader = parseVariableHeader(packetHeader.controlPacketType, incomingPacket + HEADER_SIZE);
 
-    std::string packetPayload(incomingPacket + HEADER_SIZE + packetVariableHeader->size, incomingPacket + packetHeader.packetLength);
+    std::string packetPayload(incomingPacket + HEADER_SIZE + packetVariableHeader->size, incomingPacket + packetLength);
+
     Message finalMessage = Message(packetHeader, std::move(packetVariableHeader), packetPayload);
     return finalMessage;
 }
 
-// Bit mask for extracting the control packet type from the header byte
 const uint8_t CONTROL_PACKET_TYPE_MASK = 0xF0;
-// Shift count for getting the control packet type from the header byte
 const uint8_t CONTROL_PACKET_TYPE_SHIFT = 4;
 
-// Bit masks for checking the properties of the header
 const uint8_t DUPLICATE_FLAG_MASK = 0b00001000;
 const uint8_t QOS_LEVEL_MASK = 0b00000110;
 const uint8_t RETAIN_FLAG_MASK = 0b00000001;
@@ -81,7 +79,7 @@ std::unique_ptr<VariableHeader> parseVariableHeader(ControlPacketType controlPac
     case PUBLISH:
     {
         uint8_t topicNameLength = serializedVariableHeader[0];
-        std::string topicName(serializedVariableHeader, serializedVariableHeader + topicNameLength);
+        std::string topicName(serializedVariableHeader + 1, serializedVariableHeader + topicNameLength);
 
         uint16_t packetID = (serializedVariableHeader[topicNameLength + 1] << 8) | serializedVariableHeader[topicNameLength + 2];
 
@@ -99,7 +97,7 @@ std::unique_ptr<VariableHeader> parseVariableHeader(ControlPacketType controlPac
     case SUBSCRIBE:
     {
         uint8_t topicNameLength = serializedVariableHeader[0];
-        std::string topicName(serializedVariableHeader, serializedVariableHeader + topicNameLength);
+        std::string topicName(serializedVariableHeader + 1, serializedVariableHeader + topicNameLength);
 
         uint16_t packetID = (serializedVariableHeader[topicNameLength + 1] << 8) | serializedVariableHeader[topicNameLength + 2];
 
@@ -203,12 +201,11 @@ void serializeVariableHeader(VariableHeader *variableHeader, uint8_t *serialized
         PublishHeader *publishHeader = static_cast<PublishHeader *>(variableHeader);
         if (publishHeader)
         {
-            serializedVariableHeaderLocation[0] = publishHeader->topicNameLength >> SHIFT_BYTE;
-            serializedVariableHeaderLocation[1] = publishHeader->topicNameLength;
-            std::copy(publishHeader->topicName.begin(), publishHeader->topicName.end(), serializedVariableHeaderLocation);
+            serializedVariableHeaderLocation[0] = publishHeader->topicNameLength;
+            std::copy(publishHeader->topicName.begin(), publishHeader->topicName.end(), serializedVariableHeaderLocation + 1);
 
-            serializedVariableHeaderLocation[publishHeader->topicNameLength + 2] = publishHeader->packetID >> SHIFT_BYTE;
-            serializedVariableHeaderLocation[publishHeader->topicNameLength + 3] = publishHeader->packetID;
+            serializedVariableHeaderLocation[publishHeader->topicNameLength + 1] = publishHeader->packetID >> SHIFT_BYTE;
+            serializedVariableHeaderLocation[publishHeader->topicNameLength + 2] = publishHeader->packetID;
         }
         break;
     }
@@ -227,12 +224,11 @@ void serializeVariableHeader(VariableHeader *variableHeader, uint8_t *serialized
         SubscribeHeader *subscribeHeader = static_cast<SubscribeHeader *>(variableHeader);
         if (subscribeHeader)
         {
-            serializedVariableHeaderLocation[0] = subscribeHeader->topicNameLength >> 8;
-            serializedVariableHeaderLocation[1] = subscribeHeader->topicNameLength;
-            std::copy(subscribeHeader->topicName.begin(), subscribeHeader->topicName.end(), serializedVariableHeaderLocation + 3);
+            serializedVariableHeaderLocation[0] = subscribeHeader->topicNameLength;
+            std::copy(subscribeHeader->topicName.begin(), subscribeHeader->topicName.end(), serializedVariableHeaderLocation + 1);
 
-            serializedVariableHeaderLocation[subscribeHeader->topicNameLength + 3] = subscribeHeader->packetID;
-            serializedVariableHeaderLocation[subscribeHeader->topicNameLength + 2] = subscribeHeader->packetID >> 8;
+            serializedVariableHeaderLocation[subscribeHeader->topicNameLength + 1] = subscribeHeader->packetID >> SHIFT_BYTE;
+            serializedVariableHeaderLocation[subscribeHeader->topicNameLength + 2] = subscribeHeader->packetID;
         }
         break;
     }
@@ -253,7 +249,7 @@ void serializeVariableHeader(VariableHeader *variableHeader, uint8_t *serialized
         {
             for (int i = 0; i < 16; i++)
             {
-                serializedVariableHeaderLocation[i + 1] = disconnectHeader->uuid[i];
+                serializedVariableHeaderLocation[i] = disconnectHeader->uuid[i];
             }
         }
         break;

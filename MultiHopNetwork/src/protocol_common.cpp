@@ -19,7 +19,7 @@ std::string FixedHeader::toString()
     std::string str = "Fixed Header: ";
 
     str += "ControlPacketType: ";
-    str += std::to_string(static_cast<int>(controlPacketType));
+    str += controlPacketTypeToString(controlPacketType);
     str += ", IsDuplicate: ";
     str += std::to_string(isDuplicate);
     str += ", Retain: ";

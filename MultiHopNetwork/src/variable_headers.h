@@ -105,4 +105,6 @@ struct DisconnectHeader : VariableHeader
     const std::string toString() override;
 };
 
+std::string controlPacketTypeToString(ControlPacketType ControlPacketType);
+
 #endif

@@ -40,7 +40,6 @@ void setup()
 }
 
 // Message message = createSubscribeMessage("v1/backend/measurements", 1234);
-uint8_t buf[RH_MESH_MAX_MESSAGE_LEN - 5];
 uint8_t res;
 
 void loop()
@@ -50,13 +49,13 @@ void loop()
     if (millis() > nextMsgTime && acknowledged)
     {
         // Message message = createConnectionMessage(uuid);
-        Message message = createPublishMessage("v1/backend/measurements", 1234, "lorem ipsum dolor sit amet oder so");
+        // Message message = createPublishMessage("v1/backend/measurements", 1234, "lorem ipsum dolor sit amet oder so", false, false, 1);
+        Message message = createDisconnectMessage(uuid);
         nextMsgTime += INTERVAL;
 
         try
         {
             printUUID(uuid, "main loop ");
-            serializeMessage(message, buf, RH_MAX_MESSAGE_LEN);
             network.sendMessage(GATEWAY_ADDRESS, message);
         }
         catch (std::exception e)

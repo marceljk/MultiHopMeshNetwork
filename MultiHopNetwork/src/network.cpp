@@ -39,7 +39,7 @@ void MeshNetwork::loop()
         Serial.println(": \n");
         try
         {
-            Message msg = parseIncomingPacket(buf, MAX_MESSAGE_SIZE);
+            Message msg = parseIncomingPacket(buf, len);
             Serial.println(msg.toString().c_str());
             Serial.print("rssi: ");
             Serial.println(rf95.lastRssi());

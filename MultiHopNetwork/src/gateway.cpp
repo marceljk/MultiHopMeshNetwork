@@ -1,7 +1,7 @@
 #include "gateway.h"
 
 MeshNetwork gatewayNetwork(GATEWAY_ADDRESS, handle);
-std::unordered_multimap<uint8_t, Node> connectedNodes;
+Gateway gateway;
 
 void handle(Message &msg, uint8_t from)
 {
@@ -10,11 +10,9 @@ void handle(Message &msg, uint8_t from)
     case CONNECT:
     {
         ConnectHeader *connectHeader = static_cast<ConnectHeader *>(msg.variableHeader.get());
-
-        uint8_t networkId = connectedNodes.size() + 2;
-        addNode(connectHeader->uuid, networkId);
-
-        Message ackMessage = createConnackMessage(msg, networkId);
+        uint8_t networkID = gateway.getNextNetworkID();
+        gateway.addNode(gateway.getNextNetworkID(), connectHeader->uuid);
+        Message ackMessage = createConnackMessage(msg, networkID);
         gatewayNetwork.sendMessage(from, ackMessage);
         break;
     }
@@ -25,11 +23,22 @@ void handle(Message &msg, uint8_t from)
 
         if (msg.header.qosLevel == 1)
         {
-            Message ackMessage = createConnackMessage(msg, from);
+            Message ackMessage = createPubackMessage(msg);
             gatewayNetwork.sendMessage(from, ackMessage);
         }
 
         // TODO @GateWay: DO SOMETHING WITH RECEIVED MESSAGE
+
+        // Topic Name:
+        std::string topicName = publishHeader->topicName;
+        // Payload:
+        std::string payload = msg.payload;
+
+        // NetworkID (dont think you need it but whatever):
+        uint8_t networkID = from;
+        // UUID:
+        std::array<uint8_t, 16> uuid = gateway.getUUIDByNetworkID(networkID);
+
         break;
     }
 
@@ -44,7 +53,7 @@ void handle(Message &msg, uint8_t from)
 
     case SUBSCRIBE:
     {
-        std::vector<Node *> nodes = getNodes(from);
+        SubscribeHeader *subscribeHeader = static_cast<SubscribeHeader *>(msg.variableHeader.get());
 
         // TODO @noone: SUBSCRIBE NODES TO TOPICS (not relevant for our project)
 
@@ -56,7 +65,7 @@ void handle(Message &msg, uint8_t from)
     case DISCONNECT:
         DisconnectHeader *disconnectHeader = static_cast<DisconnectHeader *>(msg.variableHeader.get());
 
-        deleteNode(from, disconnectHeader->uuid);
+        gateway.deleteNode(from);
         break;
     }
 }
@@ -71,40 +80,54 @@ void loop()
     gatewayNetwork.loop();
 }
 
-// Node class constructor definition
-Node::Node(const std::array<uint8_t, 16> uuid, uint8_t networkId)
-    : networkId(networkId), uuid(uuid)
-{
-}
+Gateway::Gateway() : nextNetworkID(1) {}
 
-// Function to add a node to the map
-void addNode(const std::array<uint8_t, 16> uuid, uint8_t networkId)
+bool Gateway::addNode(uint8_t networkID, std::array<uint8_t, 16> uuid)
 {
-    connectedNodes.emplace(networkId, Node(uuid, networkId));
-}
-
-// Function to get all nodes with a given network ID
-std::vector<Node *> getNodes(uint8_t networkId)
-{
-    std::vector<Node *> result;
-    auto range = connectedNodes.equal_range(networkId);
-    for (auto i = range.first; i != range.second; ++i)
+    for (auto it = connectedNodes.begin(); it != connectedNodes.end(); ++it)
     {
-        result.push_back(&(i->second));
-    }
-    return result;
-}
-
-// Function to delete a node with a given network ID and UUID
-void deleteNode(uint8_t networkId, const std::array<uint8_t, 16> &uuid)
-{
-    auto range = connectedNodes.equal_range(networkId);
-    for (auto i = range.first; i != range.second; ++i)
-    {
-        if (i->second.uuid == uuid)
+        if (it->second == uuid)
         {
-            connectedNodes.erase(i);
+            connectedNodes.erase(it);
             break;
         }
     }
+
+    if (connectedNodes.find(networkID) != connectedNodes.end())
+    {
+        return false;
+    }
+    connectedNodes[networkID] = uuid;
+    while (connectedNodes.find(nextNetworkID) != connectedNodes.end())
+    {
+        nextNetworkID++;
+    }
+    return true;
+}
+
+uint8_t Gateway::getNextNetworkID() const
+{
+    return nextNetworkID;
+}
+
+bool Gateway::deleteNode(uint8_t networkID)
+{
+    auto it = connectedNodes.find(networkID);
+    if (it == connectedNodes.end())
+    {
+        return false;
+    }
+
+    connectedNodes.erase(it);
+    if (networkID < nextNetworkID)
+    {
+        nextNetworkID = networkID;
+    }
+
+    return true;
+}
+
+std::array<uint8_t, 16> Gateway::getUUIDByNetworkID(uint8_t networkID)
+{
+    return connectedNodes[networkID];
 }
