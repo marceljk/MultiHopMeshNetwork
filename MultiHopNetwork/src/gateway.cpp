@@ -1,77 +1,133 @@
-#include <RHMesh.h>
-#include <RH_RF95.h>
-#include <SPI.h>
+#include "gateway.h"
 
-#include <config.h>
-#include <protocol.h>
-#include <protocol_common.h>
-#include <variable_headers.h>
+MeshNetwork gatewayNetwork(GATEWAY_ADDRESS, handle);
+Gateway gateway;
 
-RH_RF95 rf95(LLG_CS, LLG_DI0);
+void handle(Message &msg, uint8_t from)
+{
+    switch (msg.variableHeader->controlPacketType)
+    {
+    case CONNECT:
+    {
+        ConnectHeader *connectHeader = static_cast<ConnectHeader *>(msg.variableHeader.get());
+        uint8_t networkID = gateway.getNextNetworkID();
+        gateway.addNode(gateway.getNextNetworkID(), connectHeader->uuid);
+        Message ackMessage = createConnackMessage(msg, networkID);
+        gatewayNetwork.sendMessage(from, ackMessage);
+        break;
+    }
 
-RHMesh manager(rf95, GATEWAY_ADDRESS);
+    case PUBLISH:
+    {
+        PublishHeader *publishHeader = static_cast<PublishHeader *>(msg.variableHeader.get());
+
+        if (msg.header.qosLevel == 1)
+        {
+            Message ackMessage = createPubackMessage(msg);
+            gatewayNetwork.sendMessage(from, ackMessage);
+        }
+
+        // TODO @GateWay: DO SOMETHING WITH RECEIVED MESSAGE
+
+        // Topic Name:
+        std::string topicName = publishHeader->topicName;
+        // Payload:
+        std::string payload = msg.payload;
+
+        // NetworkID (dont think you need it but whatever):
+        uint8_t networkID = from;
+        // UUID:
+        std::array<uint8_t, 16> uuid = gateway.getUUIDByNetworkID(networkID);
+
+        break;
+    }
+
+    case PUBACK:
+    {
+        PubackHeader *pubackHeader = static_cast<PubackHeader *>(msg.variableHeader.get());
+
+        // TODO @noone: MARK MESSAGE AS RECEIVED ON NODE (or similar. Not relevant for our project)
+
+        break;
+    }
+
+    case SUBSCRIBE:
+    {
+        SubscribeHeader *subscribeHeader = static_cast<SubscribeHeader *>(msg.variableHeader.get());
+
+        // TODO @noone: SUBSCRIBE NODES TO TOPICS (not relevant for our project)
+
+        Message ackMessage = createSubackMessage(msg);
+        gatewayNetwork.sendMessage(from, ackMessage);
+        break;
+    }
+
+    case DISCONNECT:
+        DisconnectHeader *disconnectHeader = static_cast<DisconnectHeader *>(msg.variableHeader.get());
+
+        gateway.deleteNode(from);
+        break;
+    }
+}
 
 void setup()
 {
-    Serial.begin(9600);
-    Serial.print(F("initializing gateway with network id "));
-    Serial.print(GATEWAY_ADDRESS);
-    SPI.begin(LLG_SCK, LLG_MISO, LLG_MOSI, LLG_CS);
-    if (!manager.init())
-    {
-        Serial.println(" init failed");
-    }
-    else
-    {
-        Serial.println(" done");
-    }
-
-    rf95.setTxPower(10, false);
-    rf95.setFrequency(868.0);
-    rf95.setCADTimeout(500);
-
-    if (!rf95.setModemConfig(RH_RF95::Bw125Cr45Sf128))
-    {
-        Serial.println(F("set config failed"));
-    }
-    Serial.println("RF95 ready");
+    gatewayNetwork.setup();
 }
-
-uint8_t buf[MAX_MESSAGE_SIZE];
-uint8_t res;
 
 void loop()
 {
-    uint8_t len = sizeof(buf);
-    uint8_t from;
-    if (manager.recvfromAck(buf, &len, &from))
+    gatewayNetwork.loop();
+}
+
+Gateway::Gateway() : nextNetworkID(1) {}
+
+bool Gateway::addNode(uint8_t networkID, std::array<uint8_t, 16> uuid)
+{
+    for (auto it = connectedNodes.begin(); it != connectedNodes.end(); ++it)
     {
-        Serial.print("message from node n.");
-        Serial.print(from);
-        Serial.print(": \n\n");
-        try
+        if (it->second == uuid)
         {
-            Message msg = parseIncomingPacket(buf, MAX_MESSAGE_SIZE);
-            Serial.print(msg.toString().c_str());
+            connectedNodes.erase(it);
+            break;
         }
-        catch (std::invalid_argument e)
-        {
-            Serial.println(e.what());
-        }
-        Serial.println("\n raw (likely with a few null bytes):");
-
-        for (int j = 0; j < MAX_MESSAGE_SIZE; j++)
-        {
-            uint8_t value = buf[j];
-            for (int i = 7; i >= 0; i--)
-            {
-                Serial.print((value >> i) & 1);
-            }
-            Serial.println();
-        }
-
-        Serial.print(" rssi: ");
-        Serial.println(rf95.lastRssi());
-        Serial.println("------");
     }
+
+    if (connectedNodes.find(networkID) != connectedNodes.end())
+    {
+        return false;
+    }
+    connectedNodes[networkID] = uuid;
+    while (connectedNodes.find(nextNetworkID) != connectedNodes.end())
+    {
+        nextNetworkID++;
+    }
+    return true;
+}
+
+uint8_t Gateway::getNextNetworkID() const
+{
+    return nextNetworkID;
+}
+
+bool Gateway::deleteNode(uint8_t networkID)
+{
+    auto it = connectedNodes.find(networkID);
+    if (it == connectedNodes.end())
+    {
+        return false;
+    }
+
+    connectedNodes.erase(it);
+    if (networkID < nextNetworkID)
+    {
+        nextNetworkID = networkID;
+    }
+
+    return true;
+}
+
+std::array<uint8_t, 16> Gateway::getUUIDByNetworkID(uint8_t networkID)
+{
+    return connectedNodes[networkID];
 }

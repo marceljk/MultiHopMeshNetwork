@@ -4,9 +4,9 @@
 #include <Arduino.h>
 #include <string>
 #include <variable_headers.h>
+#include <memory>
 
-#define MAX_MESSAGE_SIZE 244
-#define HEADER_SIZE 2
+#include "config.h"
 
 struct FixedHeader
 {
@@ -23,13 +23,24 @@ struct FixedHeader
 struct Message
 {
     FixedHeader header;
-    VariableHeader variableHeader;
+    std::unique_ptr<VariableHeader> variableHeader;
     std::string payload;
 
-    Message(FixedHeader hdr, VariableHeader vHdr, std::string pl) : header(hdr), variableHeader(vHdr), payload(pl) {}
+    Message(FixedHeader hdr, std::unique_ptr<VariableHeader> vHdr, std::string pl) : header(hdr), variableHeader(std::move(vHdr)), payload(pl) {}
     std::string toString();
 };
 
-Message dummyMessage();
+Message createConnectionMessage(const std::array<uint8_t, 16> uuid);
 
+Message createConnackMessage(const Message &msg, const uint8_t networkID, const ConnackReturnCode returnCode = ACCEPTED);
+
+Message createPublishMessage(const std::string topicName, const uint16_t packetID, const std::string payload, const bool duplicate = false, const bool retain = false, const uint8_t qosLevel = 0);
+
+Message createPubackMessage(const Message &msg);
+
+Message createSubscribeMessage(const std::string topicName, const uint16_t packetID, const bool duplicate = false, const bool retain = false, const uint8_t qosLevel = 1);
+
+Message createSubackMessage(const Message &msg);
+
+Message createDisconnectMessage(const std::array<uint8_t, 16> uuid);
 #endif

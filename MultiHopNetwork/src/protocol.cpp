@@ -2,33 +2,28 @@
 
 std::set<int> validControlPackageValues{CONNECT, CONNACK, PUBLISH, PUBACK, SUBSCRIBE, SUBACK, DISCONNECT};
 
-Message parseIncomingPacket(uint8_t *incomingPacket, size_t availableSpace)
+Message parseIncomingPacket(uint8_t *incomingPacket, size_t packetLength)
 {
-    if (availableSpace < HEADER_SIZE)
+    if (packetLength < HEADER_SIZE)
     {
         throw std::invalid_argument("Insufficient space for header");
     }
     FixedHeader packetHeader = parseFixedHeader(incomingPacket);
-    if (availableSpace < packetHeader.packetLength)
+    if (packetLength < packetHeader.packetLength)
     {
         throw std::invalid_argument("Packet length in header exceeds available space");
     }
-    VariableHeader packetVariableHeader = parseVariableHeader(packetHeader.controlPacketType, incomingPacket + HEADER_SIZE);
-    if (availableSpace < packetVariableHeader.size)
-    {
-        throw std::invalid_argument("Variable header size exceeds available space");
-    }
-    std::string packetPayload(incomingPacket + HEADER_SIZE + packetVariableHeader.size, incomingPacket + packetHeader.packetLength);
-    Message finalMessage = Message(packetHeader, packetVariableHeader, packetPayload);
+    std::unique_ptr<VariableHeader> packetVariableHeader = parseVariableHeader(packetHeader.controlPacketType, incomingPacket + HEADER_SIZE);
+
+    std::string packetPayload(incomingPacket + HEADER_SIZE + packetVariableHeader->size, incomingPacket + packetLength);
+
+    Message finalMessage = Message(packetHeader, std::move(packetVariableHeader), packetPayload);
     return finalMessage;
 }
 
-// Bit mask for extracting the control packet type from the header byte
 const uint8_t CONTROL_PACKET_TYPE_MASK = 0xF0;
-// Shift count for getting the control packet type from the header byte
 const uint8_t CONTROL_PACKET_TYPE_SHIFT = 4;
 
-// Bit masks for checking the properties of the header
 const uint8_t DUPLICATE_FLAG_MASK = 0b00001000;
 const uint8_t QOS_LEVEL_MASK = 0b00000110;
 const uint8_t RETAIN_FLAG_MASK = 0b00000001;
@@ -51,78 +46,81 @@ FixedHeader parseFixedHeader(uint8_t *headerBytes)
     return FixedHeader(controlPacketType, isDuplicate, isRetain, qosLevel, packetLength);
 }
 
-VariableHeader parseVariableHeader(ControlPacketType controlPacketType, uint8_t *serializedVariableHeader)
+std::unique_ptr<VariableHeader> parseVariableHeader(ControlPacketType controlPacketType, uint8_t *serializedVariableHeader)
 {
-
-    VariableHeader variableHeader = VariableHeader(0, controlPacketType);
-    variableHeader.controlPacketType = controlPacketType;
-
+    std::unique_ptr<VariableHeader> variableHeader;
     switch (controlPacketType)
     {
     case CONNECT:
     {
         uint8_t protocolVersion = serializedVariableHeader[0];
-        uint8_t uuid[16];
+        std::array<uint8_t, 16> uuid;
         for (int i = 0; i < 16; i++)
         {
             uuid[i] = serializedVariableHeader[i + 1];
         }
-
-        size_t size = 17;
-
-        variableHeader = ConnectHeader(size, controlPacketType, protocolVersion, uuid);
+        variableHeader = std::unique_ptr<VariableHeader>(new ConnectHeader(protocolVersion, uuid));
         break;
     }
 
     case CONNACK:
     {
-        uint8_t returnCode = serializedVariableHeader[0];
-        size_t size = 1;
-
-        variableHeader = ConnackHeader(size, controlPacketType, returnCode);
+        ConnackReturnCode returnCode = static_cast<ConnackReturnCode>(serializedVariableHeader[0]);
+        uint8_t networkID = serializedVariableHeader[1];
+        std::array<uint8_t, 16> uuid;
+        for (int i = 0; i < 16; i++)
+        {
+            uuid[i] = serializedVariableHeader[i + 2];
+        }
+        variableHeader = std::unique_ptr<VariableHeader>(new ConnackHeader(returnCode, networkID, uuid));
         break;
     }
 
     case PUBLISH:
     {
         uint8_t topicNameLength = serializedVariableHeader[0];
-        std::string topicName(serializedVariableHeader, serializedVariableHeader + topicNameLength);
+        std::string topicName(serializedVariableHeader + 1, serializedVariableHeader + topicNameLength);
 
         uint16_t packetID = (serializedVariableHeader[topicNameLength + 1] << 8) | serializedVariableHeader[topicNameLength + 2];
 
-        size_t size = 3 + topicNameLength;
-        variableHeader = PublishHeader(size, controlPacketType, topicNameLength, topicName, packetID);
+        variableHeader = std::unique_ptr<VariableHeader>(new PublishHeader(topicNameLength, topicName, packetID));
         break;
     }
     case PUBACK:
     {
         uint16_t packetID = (serializedVariableHeader[0] << 8) | serializedVariableHeader[1];
-        size_t size = 2;
 
-        variableHeader = PubackHeader(size, controlPacketType, packetID);
+        variableHeader = std::unique_ptr<VariableHeader>(new PubackHeader(packetID));
         break;
     }
 
     case SUBSCRIBE:
     {
         uint8_t topicNameLength = serializedVariableHeader[0];
-        std::string topicName(serializedVariableHeader, serializedVariableHeader + topicNameLength);
+        std::string topicName(serializedVariableHeader + 1, serializedVariableHeader + topicNameLength);
 
         uint16_t packetID = (serializedVariableHeader[topicNameLength + 1] << 8) | serializedVariableHeader[topicNameLength + 2];
 
-        size_t size = 3 + topicNameLength;
-        variableHeader = PublishHeader(size, controlPacketType, topicNameLength, topicName, packetID);
+        variableHeader = std::unique_ptr<VariableHeader>(new SubscribeHeader(topicNameLength, topicName, packetID));
 
-        SubscribeHeader(size, controlPacketType, topicNameLength, topicName, packetID);
         break;
     }
 
     case SUBACK:
     {
         uint16_t packetID = (serializedVariableHeader[0] << 8) | serializedVariableHeader[1];
-        size_t size = 2;
 
-        variableHeader = SubackHeader(size, controlPacketType, packetID);
+        variableHeader = std::unique_ptr<VariableHeader>(new SubackHeader(packetID));
+        break;
+    }
+    case DISCONNECT:
+    {
+        std::array<uint8_t, 16> uuid;
+        for (int i = 0; i < 16; i++)
+        {
+            uuid[i] = serializedVariableHeader[i];
+        }
+        variableHeader = std::unique_ptr<VariableHeader>(new DisconnectHeader(uuid));
         break;
     }
 
@@ -160,71 +158,98 @@ void serializeHeader(FixedHeader &header, uint8_t *serializedHeaderLocation, siz
 constexpr size_t UUID_SIZE = 16;
 constexpr uint8_t SHIFT_BYTE = 8;
 
-void serializeVariableHeader(VariableHeader &variableHeader, uint8_t *serializedVariableHeaderLocation, size_t reservedSpace)
+void serializeVariableHeader(VariableHeader *variableHeader, uint8_t *serializedVariableHeaderLocation, size_t reservedSpace)
 {
-    if (reservedSpace < variableHeader.size)
+    if (reservedSpace < variableHeader->size)
     {
         throw std::invalid_argument("Allocated Space too small.");
     }
-    switch (variableHeader.controlPacketType)
+    switch (variableHeader->controlPacketType)
     {
     case CONNECT:
     {
-        ConnectHeader &connectHeader = static_cast<ConnectHeader &>(variableHeader);
-        serializedVariableHeaderLocation[0] = connectHeader.protocolVersion;
-        for (int i = 0; i < 16; i++)
+        ConnectHeader *connectHeader = static_cast<ConnectHeader *>(variableHeader);
+        if (connectHeader)
         {
-            serializedVariableHeaderLocation[i + 1] = connectHeader.uuid[i];
+            serializedVariableHeaderLocation[0] = connectHeader->protocolVersion;
+            for (int i = 0; i < 16; i++)
+            {
+                serializedVariableHeaderLocation[i + 1] = connectHeader->uuid[i];
+            }
         }
         break;
     }
     case CONNACK:
     {
-        ConnackHeader &connackHeader = static_cast<ConnackHeader &>(variableHeader);
-        serializedVariableHeaderLocation[0] = connackHeader.returnCode;
+        ConnackHeader *connackHeader = static_cast<ConnackHeader *>(variableHeader);
+        if (connackHeader)
+        {
+            uint8_t returnCode = static_cast<uint8_t>(connackHeader->returnCode);
+            serializedVariableHeaderLocation[0] = returnCode;
+            serializedVariableHeaderLocation[1] = connackHeader->networkID;
+            for (int i = 0; i < 16; i++)
+            {
+                serializedVariableHeaderLocation[i + 2] = connackHeader->uuid[i];
+            }
+        }
         break;
     }
     case PUBLISH:
     {
-        PublishHeader &publishHeader = static_cast<PublishHeader &>(variableHeader);
+        PublishHeader *publishHeader = static_cast<PublishHeader *>(variableHeader);
+        if (publishHeader)
+        {
+            serializedVariableHeaderLocation[0] = publishHeader->topicNameLength;
+            std::copy(publishHeader->topicName.begin(), publishHeader->topicName.end(), serializedVariableHeaderLocation + 1);
 
-        serializedVariableHeaderLocation[0] = publishHeader.topicNameLength >> SHIFT_BYTE;
-        serializedVariableHeaderLocation[1] = publishHeader.topicNameLength;
-        std::copy(publishHeader.topicName.begin(), publishHeader.topicName.end(), serializedVariableHeaderLocation);
-
-        serializedVariableHeaderLocation[publishHeader.topicNameLength + 2] = publishHeader.packetID >> SHIFT_BYTE;
-        serializedVariableHeaderLocation[publishHeader.topicNameLength + 3] = publishHeader.packetID;
+            serializedVariableHeaderLocation[publishHeader->topicNameLength + 1] = publishHeader->packetID >> SHIFT_BYTE;
+            serializedVariableHeaderLocation[publishHeader->topicNameLength + 2] = publishHeader->packetID;
+        }
         break;
     }
-
     case PUBACK:
     {
-        PubackHeader &pubackHeader = static_cast<PubackHeader &>(variableHeader);
-
-        serializedVariableHeaderLocation[0] = pubackHeader.packetID >> 8;
-        serializedVariableHeaderLocation[1] = pubackHeader.packetID;
+        PubackHeader *pubackHeader = static_cast<PubackHeader *>(variableHeader);
+        if (pubackHeader)
+        {
+            serializedVariableHeaderLocation[0] = pubackHeader->packetID >> 8;
+            serializedVariableHeaderLocation[1] = pubackHeader->packetID;
+        }
         break;
     }
-
     case SUBSCRIBE:
     {
-        SubscribeHeader &subscribeHeader = static_cast<SubscribeHeader &>(variableHeader);
+        SubscribeHeader *subscribeHeader = static_cast<SubscribeHeader *>(variableHeader);
+        if (subscribeHeader)
+        {
+            serializedVariableHeaderLocation[0] = subscribeHeader->topicNameLength;
+            std::copy(subscribeHeader->topicName.begin(), subscribeHeader->topicName.end(), serializedVariableHeaderLocation + 1);
 
-        serializedVariableHeaderLocation[0] = subscribeHeader.topicNameLength >> 8;
-        serializedVariableHeaderLocation[1] = subscribeHeader.topicNameLength;
-        std::copy(subscribeHeader.topicName.begin(), subscribeHeader.topicName.end(), serializedVariableHeaderLocation + 3);
-
-        serializedVariableHeaderLocation[subscribeHeader.topicNameLength + 3] = subscribeHeader.packetID;
-        serializedVariableHeaderLocation[subscribeHeader.topicNameLength + 2] = subscribeHeader.packetID >> 8;
+            serializedVariableHeaderLocation[subscribeHeader->topicNameLength + 1] = subscribeHeader->packetID >> SHIFT_BYTE;
+            serializedVariableHeaderLocation[subscribeHeader->topicNameLength + 2] = subscribeHeader->packetID;
+        }
         break;
     }
-
     case SUBACK:
     {
-        SubackHeader &subackHeader = static_cast<SubackHeader &>(variableHeader);
-
-        serializedVariableHeaderLocation[0] = subackHeader.packetID >> 8;
-        serializedVariableHeaderLocation[1] = subackHeader.packetID;
+        SubackHeader *subackHeader = static_cast<SubackHeader *>(variableHeader);
+        if (subackHeader)
+        {
+            serializedVariableHeaderLocation[0] = subackHeader->packetID >> 8;
+            serializedVariableHeaderLocation[1] = subackHeader->packetID;
+        }
+        break;
+    }
+    case DISCONNECT:
+    {
+        DisconnectHeader *disconnectHeader = static_cast<DisconnectHeader *>(variableHeader);
+        if (disconnectHeader)
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                serializedVariableHeaderLocation[i] = disconnectHeader->uuid[i];
+            }
+        }
         break;
     }
     }
@@ -232,8 +257,8 @@ void serializeVariableHeader(VariableHeader &variableHeader, uint8_t *serialized
 
 void serializeMessage(Message &message, uint8_t *serializedMessageLocation, size_t reservedSpace)
 {
-    serializeVariableHeader(message.variableHeader, serializedMessageLocation + HEADER_SIZE, reservedSpace - HEADER_SIZE);
-    size_t summedHeaderSize = message.variableHeader.size + HEADER_SIZE;
+    serializeVariableHeader(message.variableHeader.get(), serializedMessageLocation + HEADER_SIZE, reservedSpace - HEADER_SIZE);
+    size_t summedHeaderSize = message.variableHeader->size + HEADER_SIZE;
 
     if (message.payload.size() > MAX_MESSAGE_SIZE - summedHeaderSize)
     {
@@ -241,7 +266,7 @@ void serializeMessage(Message &message, uint8_t *serializedMessageLocation, size
     }
 
     message.header.packetLength = summedHeaderSize + message.payload.size();
-    // Slightly weird order, but the message length must be determined before serializing the fixed header.
+
     serializeHeader(message.header, serializedMessageLocation, reservedSpace);
 
     std::copy(message.payload.begin(), message.payload.end(), serializedMessageLocation + summedHeaderSize);

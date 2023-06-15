@@ -1,114 +1,120 @@
-#include <RHMesh.h>
-#include <RH_RF95.h>
-#include <SPI.h>
-#include <config.h>
-#include <protocol.h>
-#include <protocol_common.h>
-#include <variable_headers.h>
+#include "node.h"
 
-#define TXINTERVAL 3000
-unsigned long nextTxTime;
+#define INTERVAL 8000
+unsigned long nextMsgTime;
 
-RH_RF95 rf95(LLG_CS, LLG_DI0);
+MeshNetwork network(HARDCODED_NETWORK_ID ? HARDCODED_NETWORK_ID : INITIAL_NODE_ADDRESS, handle);
 
-RHMesh manager(rf95, NODE_ADDRESS);
+std::array<uint8_t, 16> uuid;
+uint8_t networkID;
 
-Message message = dummyMessage();
+bool acknowledged = false;
 
 void setup()
 {
-    Serial.begin(9600);
-    Serial.print(F("initializing node "));
-    Serial.print(NODE_ADDRESS);
-    SPI.begin(LLG_SCK, LLG_MISO, LLG_MOSI, LLG_CS);
-    if (!manager.init())
+    Preferences prefs;
+    prefs.begin("network", false);
+
+    if (HARDCODED_UUID != nullptr)
     {
-        Serial.println(" init failed");
+        std::copy(HARDCODED_UUID, HARDCODED_UUID + 16, uuid.begin());
+    }
+    else if (!prefs.getBytesLength("uuid") || REGENERATING_UUID_EACH_START)
+    {
+        generateUUID(uuid.data());
+        prefs.putBytes("uuid", uuid.data(), uuid.size());
     }
     else
     {
-        Serial.println(" done");
+        prefs.getBytes("uuid", uuid.data(), 16);
     }
 
-    rf95.setTxPower(10, false);
-    rf95.setFrequency(868.0);
-    rf95.setCADTimeout(500);
+    network.setup();
 
-    if (!rf95.setModemConfig(RH_RF95::Bw125Cr45Sf128))
-    {
-        Serial.println(F("set config failed"));
-    }
-    Serial.println("RF95 ready");
-    nextTxTime = millis();
+    Message msg = createConnectionMessage(uuid);
+    network.sendMessage(GATEWAY_ADDRESS, msg);
 
-    // testingHeaderParsing();
-
-    message = dummyMessage();
+    prefs.end();
 }
 
-uint8_t buf[RH_MESH_MAX_MESSAGE_LEN - 5];
 uint8_t res;
 
 void loop()
 {
+    network.loop();
 
-    if (millis() > nextTxTime)
+    if (millis() > nextMsgTime && acknowledged)
     {
-        Serial.println("---------------------------------");
+        Message message = createPublishMessage("v1/backend/measurements", 1234, "lorem ipsum dolor sit amet oder so", false, false, 1);
 
-        Serial.println(message.toString().c_str());
-        serializeMessage(message, buf, RH_MAX_MESSAGE_LEN);
+        nextMsgTime += INTERVAL;
 
-        Serial.println("\n raw: ");
-
-        for (int j = 0; j < 20; j++)
+        try
         {
-            uint8_t value = buf[j];
-            for (int i = 7; i >= 0; i--)
-            {
-                Serial.print((value >> i) & 1);
-            }
-            Serial.println();
+            network.sendMessage(GATEWAY_ADDRESS, message);
         }
-        Serial.println("%%%%%%%%%%%%%%");
-
-        nextTxTime += TXINTERVAL;
-        Serial.print("Sending to bridge n.");
-        Serial.print(GATEWAY_ADDRESS);
-        Serial.print(" res=");
-        // manager.sendto(buf, sizeof(buf), RH_BROADCAST_ADDRESS);
-        res = manager.sendtoWait(buf, sizeof(buf), GATEWAY_ADDRESS);
-        Serial.println(res);
-        if (res == RH_ROUTER_ERROR_NONE)
+        catch (std::exception e)
         {
-            // Data has been reliably delivered to the next node.
-            // now we do...
-        }
-        else
-        {
-            // Data not delivered to the next node.
-            Serial.println("sendtoWait failed. Are the bridge/intermediate mesh nodes running?");
+            Serial.println(e.what());
         }
     }
-    // nextTxTime += TXINTERVAL;
-    // try
-    // {
-    //     testingHeaderParsing();
-    // }
-    // catch (std::invalid_argument)
-    // {
-    //     Serial.println("payload broken");
-    // }
+}
 
-    uint8_t len = sizeof(buf);
-    uint8_t from;
-    if (manager.recvfromAck(buf, &len, &from))
+void handle(Message &msg, uint8_t from)
+{
+    switch (msg.variableHeader->controlPacketType)
     {
-        Serial.print("message from node n.");
-        Serial.print(from);
-        Serial.print(": ");
-        Serial.print((char *)buf);
-        Serial.print(" rssi: ");
-        Serial.println(rf95.lastRssi());
+    case CONNACK:
+    {
+        ConnackHeader *connackHeader = static_cast<ConnackHeader *>(msg.variableHeader.get());
+
+        if (connackHeader->returnCode == ACCEPTED && uuid == connackHeader->uuid)
+        {
+            Preferences prefs;
+            if (HARDCODED_NETWORK_ID)
+            {
+                network.updateNetworkId(HARDCODED_NETWORK_ID);
+            }
+            else
+            {
+                network.updateNetworkId(connackHeader->networkID);
+            }
+            acknowledged = true;
+        }
+        break;
+    }
+    case PUBLISH:
+    {
+        PublishHeader *publishHeader = static_cast<PublishHeader *>(msg.variableHeader.get());
+
+        // TODO: DO SOMETHING WITH RECEIVED MESSAGE (not relevant for our project)
+        break;
+    }
+    case PUBACK:
+    {
+        PubackHeader *pubackHeader = static_cast<PubackHeader *>(msg.variableHeader.get());
+
+        // TODO: MARK MESSAGE AS RECEIVED ON GATEWAY (or similar. Not relevant for our project)
+        break;
+    }
+    case SUBACK:
+    {
+        SubackHeader *subackHeader = static_cast<SubackHeader *>(msg.variableHeader.get());
+
+        // TODO: MARK TOPIC AS SUCCESSFULLY SUBSCRIBED (or similar. Not relevant for our project)
+        break;
+    }
+    default:
+        Serial.println("Something else happened:");
+        Serial.println(msg.toString().c_str());
+        break;
+    }
+}
+
+void generateUUID(byte *uuid)
+{
+    for (int i = 0; i < 16; i++)
+    {
+        uuid[i] = esp_random() % 256;
     }
 }

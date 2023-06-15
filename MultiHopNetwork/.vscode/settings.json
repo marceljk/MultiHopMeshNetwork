@@ -57,5 +57,6 @@
         "connack",
         "puback",
         "suback"
-    ]
+    ],
+    "cmake.sourceDirectory": "C:/Users/jakob/Hochschule Heilbronn/Semester 6/MDMA/MultiHopMeshNetwork/MultiHopNetwork/.pio/libdeps/heltec_wifi_lora_32_V2/Unity"
 }

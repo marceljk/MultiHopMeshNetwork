@@ -27,7 +27,7 @@ A Packet is composed of the following (similar to MQTT):
 | PUBACK     | 4     | Node -> Gateway Gateway -> Node | Publish Acknowledgement (QoS Lvl 1 only) | Measurements              | [Required](#L71) | None             |
 | SUBSCRIBE  | 8     | Node -> Gateway                 | Subscribe Request                        | None                      | [Required](#L79) | None             |
 | SUBACK     | 9     | Gateway -> Node                 | Subscribe Acknowledgement                | None                      | [Required](#L89) | None             |
-| DISCONNECT | 14    | Node -> Gateway                 | Disconnect Information                   | Update                    | None             | None             |
+| DISCONNECT | 14    | Node -> Gateway                 | Disconnect Information                   | After Update                    | None             | None             |
 
 #### 1.1.2 Control Flags
 
@@ -48,9 +48,11 @@ A Packet is composed of the following (similar to MQTT):
 
 #### 1.2.2 CONNNACK
 
-| Bytes | Name                | Description                                                  |
-|:-----:|---------------------|--------------------------------------------------------------|
-| 1     | Connect Return code | Return Code answering the connection request. Defined below. |
+| Bytes | Name                | Description                                                              |
+|:-----:|---------------------|--------------------------------------------------------------------------|
+|   1   | Connect Return code | Return Code answering the connection request. Defined below.             |
+|   1   | Network ID          | New ID assigned to the connecting node for communication in the network. |
+| 16    | UUID                | The UUID of the Node the networkID has been assigned to                  |
 
 | Value    |     Return Code   Response                                    |     Description                                                                             |
 |:--------:|---------------------------------------------------------------|---------------------------------------------------------------------------------------------|
@@ -97,7 +99,9 @@ The Variable Header contains the Packet-ID of the packet being acknowledged.
 
 #### 1.2.7 DISCONNECT
 
-None.
+| Bytes | Content | Description                           |
+|-------|---------|---------------------------------------|
+| 16    | UUID    | The UUID of the disconnecting device. |
 
 
 ### 1.3 Payload 
