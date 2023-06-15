@@ -176,8 +176,6 @@ void serializeVariableHeader(VariableHeader *variableHeader, uint8_t *serialized
             {
                 serializedVariableHeaderLocation[i + 1] = connectHeader->uuid[i];
             }
-
-            printUUID(connectHeader->uuid, "serialize - CONNECT");
         }
         break;
     }

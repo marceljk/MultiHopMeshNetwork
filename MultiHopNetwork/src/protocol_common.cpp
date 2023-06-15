@@ -48,7 +48,6 @@ Message dummyMessage()
 
 Message createConnectionMessage(const std::array<uint8_t, 16> uuid)
 {
-    printUUID(uuid, "create connection message");
     FixedHeader fixedHeader = FixedHeader(CONNECT, false, false, 1, 19);
 
     std::unique_ptr<VariableHeader> variableHeader = std::unique_ptr<VariableHeader>(new ConnectHeader(1, uuid));
@@ -121,21 +120,4 @@ Message createDisconnectMessage(const std::array<uint8_t, 16> uuid)
     std::unique_ptr<VariableHeader> variableHeader = std::unique_ptr<VariableHeader>(new DisconnectHeader(uuid));
     Message response = Message(fixedHeader, std::move(variableHeader), "");
     return response;
-}
-
-void printUUID(std::array<uint8_t, 16> uuid, std::string location)
-{
-    char buffer[37]; // Buffer large enough to hold the UUID string plus the null terminator
-
-    // Format the UUID
-    sprintf(buffer, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-            uuid[0], uuid[1], uuid[2], uuid[3],
-            uuid[4], uuid[5],
-            uuid[6], uuid[7],
-            uuid[8], uuid[9],
-            uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]);
-    Serial.print("uuid [special method] invoked at ");
-    Serial.print(location.c_str());
-    Serial.print(": ");
-    Serial.println(buffer);
 }

@@ -43,6 +43,4 @@ Message createSubscribeMessage(const std::string topicName, const uint16_t packe
 Message createSubackMessage(const Message &msg);
 
 Message createDisconnectMessage(const std::array<uint8_t, 16> uuid);
-
-void printUUID(const std::array<uint8_t, 16> uuid, std::string location);
 #endif

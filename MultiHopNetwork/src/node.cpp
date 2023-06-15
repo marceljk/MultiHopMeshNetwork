@@ -21,7 +21,7 @@ void setup()
     }
     else if (!prefs.getBytesLength("uuid") || REGENERATING_UUID_EACH_START)
     {
-        generateUUID(uuid.data()); // Assuming generateUUID takes a pointer to the start of the UUID array
+        generateUUID(uuid.data());
         prefs.putBytes("uuid", uuid.data(), uuid.size());
     }
     else
@@ -31,15 +31,12 @@ void setup()
 
     network.setup();
 
-    printUUID(uuid, "first init");
-
     Message msg = createConnectionMessage(uuid);
     network.sendMessage(GATEWAY_ADDRESS, msg);
 
     prefs.end();
 }
 
-// Message message = createSubscribeMessage("v1/backend/measurements", 1234);
 uint8_t res;
 
 void loop()
@@ -48,14 +45,12 @@ void loop()
 
     if (millis() > nextMsgTime && acknowledged)
     {
-        // Message message = createConnectionMessage(uuid);
-        // Message message = createPublishMessage("v1/backend/measurements", 1234, "lorem ipsum dolor sit amet oder so", false, false, 1);
-        Message message = createDisconnectMessage(uuid);
+        Message message = createPublishMessage("v1/backend/measurements", 1234, "lorem ipsum dolor sit amet oder so", false, false, 1);
+
         nextMsgTime += INTERVAL;
 
         try
         {
-            printUUID(uuid, "main loop ");
             network.sendMessage(GATEWAY_ADDRESS, message);
         }
         catch (std::exception e)
@@ -73,7 +68,7 @@ void handle(Message &msg, uint8_t from)
     {
         ConnackHeader *connackHeader = static_cast<ConnackHeader *>(msg.variableHeader.get());
 
-        if (connackHeader->returnCode == ACCEPTED) // && uuid == connackHeader->uuid
+        if (connackHeader->returnCode == ACCEPTED && uuid == connackHeader->uuid)
         {
             Preferences prefs;
             if (HARDCODED_NETWORK_ID)
