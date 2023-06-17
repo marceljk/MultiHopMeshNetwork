@@ -13,28 +13,39 @@ bool acknowledged = false;
 void setup()
 {
     Preferences prefs;
+    DisplayHandler displayHandler;
     prefs.begin("network", false);
 
-    if (HARDCODED_UUID != nullptr)
+    if (USING_DEFAULT_UUID)
     {
         std::copy(HARDCODED_UUID, HARDCODED_UUID + 16, uuid.begin());
     }
     else if (!prefs.getBytesLength("uuid") || REGENERATING_UUID_EACH_START)
     {
         generateUUID(uuid.data());
-        prefs.putBytes("uuid", uuid.data(), uuid.size());
+
+        int timer = TIME_TILL_UUID_IS_SAVED;
+        while (timer >= 0)
+        {
+            delay(1000);
+            displayHandler.displayUUID(uuid);
+            displayHandler.displayInstructions(timer);
+            timer--;
+        }
+        prefs.putBytes("uuid", uuid.data(), 16);
     }
     else
     {
         prefs.getBytes("uuid", uuid.data(), 16);
     }
+    prefs.end();
 
     network.setup();
 
     Message msg = createConnectionMessage(uuid);
     network.sendMessage(GATEWAY_ADDRESS, msg);
 
-    prefs.end();
+    displayHandler.clearScreen();
 }
 
 uint8_t res;

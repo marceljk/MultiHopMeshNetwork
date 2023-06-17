@@ -17,6 +17,7 @@
 #include "protocol.h"
 #include "protocol_common.h"
 #include "variable_headers.h"
+#include "display.h"
 
 void handle(Message &msg, uint8_t from);
 void generateUUID(byte *uuid);
