@@ -77,3 +77,7 @@ void MeshNetwork::updateNetworkId(uint8_t newId)
 {
     manager.setThisAddress(newId);
 }
+
+uint8_t MeshNetwork::getCurrentNetworkId(){
+    return manager.thisAddress();
+}

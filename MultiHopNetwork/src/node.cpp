@@ -6,14 +6,14 @@ unsigned long nextMsgTime;
 MeshNetwork network(HARDCODED_NETWORK_ID ? HARDCODED_NETWORK_ID : INITIAL_NODE_ADDRESS, handle);
 
 std::array<uint8_t, 16> uuid;
-uint8_t networkID;
 
 bool acknowledged = false;
+DisplayHandler displayHandler;
+
 
 void setup()
 {
     Preferences prefs;
-    DisplayHandler displayHandler;
     prefs.begin("network", false);
 
     if (USING_DEFAULT_UUID)
@@ -73,6 +73,7 @@ void loop()
 
 void handle(Message &msg, uint8_t from)
 {
+    displayHandler.displayMessage(true, from, network.getCurrentNetworkId(), msg);
     switch (msg.variableHeader->controlPacketType)
     {
     case CONNACK:

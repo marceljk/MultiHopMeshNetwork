@@ -22,6 +22,8 @@
 #define DISPLAY_PORT_1 4
 #define DISPLAY_PORT_2 15
 
+#define DISPLAY_PADDING = 2
+
 // DEBUGGING:
 
 #define HARDCODED_NETWORK_ID 0

@@ -24,6 +24,7 @@ public:
     void loop();
     bool sendMessage(uint8_t to, Message &msg);
     void updateNetworkId(uint8_t newID);
+    uint8_t getCurrentNetworkId();
 };
 
 #endif 

@@ -56,4 +56,33 @@ void DisplayHandler::displayInstructions(int timeLeft)
 void DisplayHandler::clearScreen()
 {
     display.clear();
+
+}
+
+void DisplayHandler::displayMessage(bool received, uint8_t from, uint8_t to, Message &msg){
+    display.clear();
+    display.drawString(0,0, "Received Packet from Node "+String(from));
+    display.drawString(0,0, "Sent packet to Node "+String(to));
+    display.drawString(0,14, "Type: "+String(controlPacketTypeToString(msg.header.controlPacketType).c_str()));
+    if(msg.header.controlPacketType == PUBLISH){
+        printMultiLine(msg.payload.c_str(), 0, 30);
+    }
+
+    display.drawRect(113, 0, 12, 12);
+    display.setTextAlignment(TEXT_ALIGN_CENTER);
+    display.drawString(119, 0, received? String(to) : String(from));
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+
+}
+
+void DisplayHandler::printMultiLine(String text, int16_t x, int16_t y) {
+  int lineSpacing = 10;
+  int lineCount = 0;
+
+  while (text.length() > 0) {
+    uint16_t charsDrawn = display.drawString(0, lineSpacing * lineCount, text);
+    text = text.substring(charsDrawn);
+    lineCount++;
+  }
+  display.display();
 }
