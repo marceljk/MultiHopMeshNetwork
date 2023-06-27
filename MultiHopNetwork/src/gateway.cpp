@@ -2,9 +2,16 @@
 
 MeshNetwork gatewayNetwork(GATEWAY_ADDRESS, handle);
 Gateway gateway;
+DisplayHandler displayHandler;
+
+#define INTERVAL 8000
+unsigned long nextMsgTime;
 
 void handle(Message &msg, uint8_t from)
 {
+    displayHandler.displayMessage(true, from, gatewayNetwork.getCurrentNetworkId(), msg);
+    displayHandler.displayNodeId(gatewayNetwork.getCurrentNetworkId());
+
     switch (msg.variableHeader->controlPacketType)
     {
     case CONNECT:
@@ -39,6 +46,13 @@ void handle(Message &msg, uint8_t from)
         // UUID:
         std::array<uint8_t, 16> uuid = gateway.getUUIDByNetworkID(networkID);
 
+        if (topicName == "v1/updates/missing")
+        {
+            Serial.println("requested Packet!");
+
+            // TODO @UPDATE-GROUP: Handle the missing packet request.
+        }
+
         break;
     }
 
@@ -70,14 +84,31 @@ void handle(Message &msg, uint8_t from)
     }
 }
 
+void broadcastUpdate(UpdateBlock updateBlock)
+{
+    gatewayNetwork.broadcastUpdateBlock(updateBlock);
+}
+
 void setup()
 {
     gatewayNetwork.setup();
+    displayHandler.init();
+    displayHandler.displayNodeId(gatewayNetwork.getCurrentNetworkId());
 }
 
 void loop()
 {
     gatewayNetwork.loop();
+
+    if (millis() > nextMsgTime)
+    {
+        // TODO @UPDATE-GROUP: Send update.
+        std::string content = "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam volup";
+        std::vector<uint8_t> contentVector(content.begin(), content.end());
+        UpdateBlock block = createUpdateBlock(1, 2, 0, contentVector);
+        broadcastUpdate(block);
+        nextMsgTime = millis() + INTERVAL;
+    }
 }
 
 Gateway::Gateway() : nextNetworkID(1) {}
@@ -125,6 +156,11 @@ bool Gateway::deleteNode(uint8_t networkID)
     }
 
     return true;
+}
+
+int Gateway::getConnectedNodesCount()
+{
+    return connectedNodes.size();
 }
 
 std::array<uint8_t, 16> Gateway::getUUIDByNetworkID(uint8_t networkID)

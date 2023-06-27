@@ -18,9 +18,8 @@ const std::string ConnectHeader::toString()
     str += std::to_string(protocolVersion);
     str += ", UUID in Hex: ";
 
-    char buffer[37]; // Buffer large enough to hold the UUID string plus the null terminator
+    char buffer[37];
 
-    // Format the UUID
     sprintf(buffer, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
             uuid[0], uuid[1], uuid[2], uuid[3],
             uuid[4], uuid[5],
@@ -43,9 +42,8 @@ const std::string ConnackHeader::toString()
     str += std::to_string(networkID);
     str += ", UUID in Hex: ";
 
-    char buffer[37]; // Buffer large enough to hold the UUID string plus the null terminator
+    char buffer[37];
 
-    // Format the UUID
     sprintf(buffer, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
             uuid[0], uuid[1], uuid[2], uuid[3],
             uuid[4], uuid[5],
@@ -102,9 +100,7 @@ const std::string DisconnectHeader::toString()
     std::string str = VariableHeader::toString();
     str += ", UUID in Hex: ";
 
-    char buffer[37]; // Buffer large enough to hold the UUID string plus the null terminator
-
-    // Format the UUID
+    char buffer[37];
     sprintf(buffer, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
             uuid[0], uuid[1], uuid[2], uuid[3],
             uuid[4], uuid[5],
@@ -135,4 +131,5 @@ std::string controlPacketTypeToString(ControlPacketType ControlPacketType)
     case DISCONNECT:
         return "DISCONNECT";
     }
+    return "";
 }
