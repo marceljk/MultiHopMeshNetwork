@@ -2,9 +2,10 @@
 #define PROTOCOL_COMMON_H
 
 #include <Arduino.h>
-#include <string>
+#include <cstring>
 #include <variable_headers.h>
 #include <memory>
+#include <vector>
 
 #include "config.h"
 
@@ -30,7 +31,16 @@ struct Message
     std::string toString();
 };
 
-Message createConnectionMessage(const std::array<uint8_t, 16> uuid);
+struct UpdateBlock
+{
+    uint16_t versionNumber;
+    uint16_t numberOfBlocks;
+    uint16_t blockIndex;
+    std::vector<uint8_t> blockContent;
+};
+
+Message
+createConnectionMessage(const std::array<uint8_t, 16> uuid);
 
 Message createConnackMessage(const Message &msg, const uint8_t networkID, const ConnackReturnCode returnCode = ACCEPTED);
 
@@ -43,4 +53,11 @@ Message createSubscribeMessage(const std::string topicName, const uint16_t packe
 Message createSubackMessage(const Message &msg);
 
 Message createDisconnectMessage(const std::array<uint8_t, 16> uuid);
+
+UpdateBlock parseUpdateBlock(const uint8_t *receivedPacket, size_t size);
+
+void serializeUpdateBlock(uint8_t *updatePacketLocation, size_t reservedSize, UpdateBlock updateBlock);
+
+UpdateBlock createUpdateBlock(uint16_t versionNumber, uint16_t numberOfBlocks, uint16_t blockIndex, std::vector<uint8_t> &blockContent);
+
 #endif

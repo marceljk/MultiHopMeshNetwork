@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define GATEWAY_ADDRESS 1
+#define GATEWAY_ADDRESS 0
 #define INITIAL_NODE_ADDRESS 254
 
 #define MAX_MESSAGE_SIZE 244
@@ -22,7 +22,10 @@
 #define DISPLAY_PORT_1 4
 #define DISPLAY_PORT_2 15
 
-#define DISPLAY_PADDING = 2
+#define DISPLAY_PADDING 2
+#define BUTTON_PIN 0
+
+#define CONNECT_TIMEOUT 5000
 
 // DEBUGGING:
 

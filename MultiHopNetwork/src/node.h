@@ -11,6 +11,8 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <vector>
+#include <unordered_map>
 
 #include "network.h"
 #include "config.h"
@@ -21,6 +23,11 @@
 
 void handle(Message &msg, uint8_t from);
 void generateUUID(byte *uuid);
+void handleButtonPress();
+void handleUpdateMessage(UpdateBlock updateBlock);
+bool checkIfPreviouslyReceived(uint16_t version, uint16_t blockIndex);
+uint32_t makeKey(uint16_t version, uint16_t blockIndex);
+void requestMissingPacket(uint16_t blockIndex);
 
 void setup();
 void loop();

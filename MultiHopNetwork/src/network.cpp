@@ -39,13 +39,35 @@ void MeshNetwork::loop()
         Serial.println(": \n");
         try
         {
-            Message msg = parseIncomingPacket(buf, len);
-            Serial.println(msg.toString().c_str());
-            Serial.print("rssi: ");
-            Serial.println(rf95.lastRssi());
-            Serial.println("----------");
-            handleMessage(msg, from);
+            // A little scuffed, should be changed later on. The UpdateBlock handling is more of an afterthought.
+
+            if (buf[0] == 0xFF)
+            {
+                if (handleUpdateMessage == nullptr)
+                {
+                    return;
+                }
+                UpdateBlock block = parseUpdateBlock(buf, len);
+                Serial.print("received UpdateBlock no ");
+                Serial.print(block.blockIndex);
+                Serial.print(": Content: ");
+                Serial.println(std::string(block.blockContent.begin(), block.blockContent.end()).c_str());
+                Serial.print("rssi: ");
+                Serial.println(rf95.lastRssi());
+                Serial.println("----------");
+                handleUpdateMessage(block);
+            }
+            else
+            {
+                Message msg = parseIncomingPacket(buf, len);
+                Serial.println(msg.toString().c_str());
+                Serial.print("rssi: ");
+                Serial.println(rf95.lastRssi());
+                Serial.println("----------");
+                handleMessage(msg, from);
+            }
         }
+
         catch (std::invalid_argument e)
         {
             Serial.println("Parsing failed with the following error:");
@@ -73,11 +95,21 @@ bool MeshNetwork::sendMessage(uint8_t to, Message &message)
     return manager.sendtoWait(serializedMessage, message.header.packetLength, to) == RH_ROUTER_ERROR_NONE;
 }
 
+void MeshNetwork::broadcastUpdateBlock(UpdateBlock updateBlock)
+{
+    uint8_t buf[244];
+    serializeUpdateBlock(buf, 244, updateBlock);
+    bool sent = manager.sendtoWait(buf, 244, RH_BROADCAST_ADDRESS);
+    Serial.println("Sending Update Block ");
+    Serial.println("----------");
+}
+
 void MeshNetwork::updateNetworkId(uint8_t newId)
 {
     manager.setThisAddress(newId);
 }
 
-uint8_t MeshNetwork::getCurrentNetworkId(){
+uint8_t MeshNetwork::getCurrentNetworkId()
+{
     return manager.thisAddress();
 }

@@ -17,9 +17,11 @@ public:
     void displayInstructions(int timeLeft);
     void clearScreen();
     void displayMessage(bool received, uint8_t from, uint8_t to, Message &msg);
+    void displayNodeId(uint8_t nodeId);
+    void init();
 
 private:
-    SSD1306Wire display;
+    SSD1306 display;
     QRCode qrcode;
     void printMultiLine(String text, int16_t x, int16_t y);
 };

@@ -14,9 +14,11 @@
 #include "config.h"
 #include "protocol.h"
 #include "protocol_common.h"
+#include "display.h"
 
 #include <map>
 #include <string>
+#include <vector>
 
 class Gateway
 {
@@ -31,6 +33,7 @@ public:
     uint8_t getNextNetworkID() const;
     bool deleteNode(uint8_t networkID);
     std::array<uint8_t, 16> getUUIDByNetworkID(uint8_t networkID);
+    int getConnectedNodesCount();
 };
 
 void handle(Message &msg, uint8_t from);

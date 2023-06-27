@@ -20,6 +20,6 @@ void serializeHeader(FixedHeader &header, uint8_t *serializedHeaderLocation, siz
 
 Message parseIncomingPacket(uint8_t *incomingPacket, size_t availableSpace);
 FixedHeader parseFixedHeader(uint8_t *serializedHeader);
-std::unique_ptr<VariableHeader> parseVariableHeader(ControlPacketType controlPacketType, uint8_t *serializedVariableHeader);
+std::unique_ptr<VariableHeader> parseVariableHeader(ControlPacketType controlPacketType, uint8_t *serializedVariableHeader, size_t variableHeaderLength);
 
 #endif
