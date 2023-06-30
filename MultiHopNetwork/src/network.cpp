@@ -100,8 +100,8 @@ void MeshNetwork::broadcastUpdateBlock(UpdateBlock updateBlock)
     uint8_t buf[244];
     serializeUpdateBlock(buf, 244, updateBlock);
     bool sent = manager.sendtoWait(buf, 244, RH_BROADCAST_ADDRESS);
-    Serial.println("Sending Update Block ");
-    Serial.println("----------");
+    // Serial.println("Sending Update Block ");
+    // Serial.println("----------");
 }
 
 void MeshNetwork::updateNetworkId(uint8_t newId)
