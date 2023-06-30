@@ -15,6 +15,8 @@
 #include "protocol.h"
 #include "protocol_common.h"
 #include "display.h"
+#include "SPIFFS.h"
+#include "ArduinoJson.h"
 
 #include <map>
 #include <string>
@@ -37,6 +39,7 @@ public:
 };
 
 void handle(Message &msg, uint8_t from);
+void sendUpdate();
 
 void setup();
 void loop();
